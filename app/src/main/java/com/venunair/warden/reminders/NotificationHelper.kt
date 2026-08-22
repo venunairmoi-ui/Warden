@@ -1,0 +1,147 @@
+package com.venunair.warden.reminders
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.venunair.warden.MainActivity
+import com.venunair.warden.R
+import com.venunair.warden.data.Item
+import com.venunair.warden.data.ReminderRule
+
+object NotificationHelper {
+    // v2, not "warranty_reminders": NotificationChannel importance can only
+    // be set at CREATION — Android deliberately ignores importance changes
+    // on an already-existing channel ID (protects a user's own customized
+    // settings from being silently overridden). Bumping DEFAULT -> HIGH
+    // below requires a fresh channel ID to actually take effect for anyone
+    // who already ran an earlier build, this device included.
+    const val CHANNEL_ID = "warranty_reminders_v2"
+    const val ACTION_MARK_SERVICED = "com.venunair.warden.action.MARK_SERVICED"
+    const val ACTION_SNOOZE = "com.venunair.warden.action.SNOOZE"
+    const val EXTRA_ITEM_ID = "extra_item_id"
+    const val EXTRA_RULE_ID = "extra_rule_id"
+    const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+
+    /**
+     * minSdk is already 26 (O), the same level NotificationChannel was
+     * introduced on, so no Build.VERSION.SDK_INT guard is needed — every
+     * device this app runs on supports channels.
+     *
+     * IMPORTANCE_HIGH (not DEFAULT): this app's whole point is a reminder
+     * you don't miss — DEFAULT only lands quietly in the shade, HIGH is
+     * what actually gets a heads-up popup + sound. New channel also gets
+     * the platform's default notification sound automatically; no extra
+     * setSound() call needed.
+     */
+    fun ensureChannel(context: Context) {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Warranty & AMC reminders",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Alerts when a tracked warranty, AMC, or subscription is due soon."
+        }
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    /** Returns whether a notification was actually posted — see the caller in ReminderCheckWorker for why that matters. */
+    fun showReminder(context: Context, item: Item, rule: ReminderRule, daysLeft: Long): Boolean {
+        // POST_NOTIFICATIONS (API 33+) may have been denied — notify() would
+        // otherwise silently no-op (or trip a lint @RequiresPermission
+        // check); bail explicitly so this reads as an intentional guard.
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return false
+
+        // One notification per ITEM, not per rule — if two rules for the
+        // same item both become due in the same daily check (unlikely given
+        // the default 30/7/1 day spacing, but possible with hand-edited
+        // rules), the later one replaces the earlier rather than stacking.
+        // Acceptable trade-off for v1; revisit if that turns out to matter.
+        val notificationId = item.id.toInt()
+
+        val body = when {
+            daysLeft < 0 -> "Overdue by ${-daysLeft} day${if (-daysLeft == 1L) "" else "s"}"
+            daysLeft == 0L -> "Due today"
+            else -> "Due in $daysLeft day${if (daysLeft == 1L) "" else "s"}"
+        }
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                putExtra(MainActivity.EXTRA_DEEP_LINK_ITEM_ID, item.id)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            // Proper alpha-only bell silhouette — see ic_notification.xml
+            // for why the previous system placeholder rendered as an
+            // illegible white blob instead of a recognizable icon.
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(item.name)
+            .setContentText(body)
+            // Long item names or bodies get truncated to one line without
+            // this — BigTextStyle lets the shade expand to show it in full,
+            // which is the other half of "hard to read" on a long name.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            // Accent color for the small-icon circle / header tint on
+            // launchers that colorize by it (stock Android 8+, and several
+            // OEM skins) — WardenPrimary, same brand color as the in-app
+            // theme (ui/theme/Color.kt), so the notification doesn't fall
+            // back to a low-contrast default.
+            .setColor(0xFF2E5E4E.toInt())
+            // Matches the channel's IMPORTANCE_HIGH. On API 26+ (this app's
+            // minSdk) the channel is what actually governs heads-up/sound
+            // behavior — this is only a fallback for pre-channel Android,
+            // kept consistent rather than left mismatched.
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            // Two action buttons share one row of limited width; longer
+            // labels ("Mark serviced" / "Snooze 7 days") were reported
+            // clipped on OxygenOS. Shorter labels here don't change what
+            // fires -- ReminderActionReceiver keys off the Intent action
+            // string (ACTION_MARK_SERVICED / ACTION_SNOOZE), never the
+            // visible button text.
+            .addAction(0, "Serviced", actionPendingIntent(context, ACTION_MARK_SERVICED, item.id, rule.id, notificationId))
+            .addAction(0, "Snooze 7d", actionPendingIntent(context, ACTION_SNOOZE, item.id, rule.id, notificationId))
+            .build()
+
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        return true
+    }
+
+    private fun actionPendingIntent(
+        context: Context,
+        action: String,
+        itemId: Long,
+        ruleId: Long,
+        notificationId: Int
+    ): PendingIntent {
+        val intent = Intent(context, ReminderActionReceiver::class.java).apply {
+            this.action = action
+            putExtra(EXTRA_ITEM_ID, itemId)
+            putExtra(EXTRA_RULE_ID, ruleId)
+            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        // Distinct request codes per (item, action) so the Mark-serviced and
+        // Snooze PendingIntents for the same notification don't collide —
+        // FLAG_UPDATE_CURRENT keys off the request code, and both actions
+        // share the same underlying Intent shape otherwise.
+        val requestCode = notificationId * 2 + if (action == ACTION_MARK_SERVICED) 0 else 1
+        return PendingIntent.getBroadcast(
+            context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+}

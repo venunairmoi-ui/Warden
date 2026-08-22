@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Sprint 2: camera capture -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- Sprint 5: local reminder notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+         Sprint 6: opt-in auto-detect of new receipts/warranty-card screenshots.
+         Declared here because the manifest requires it, but per spec section 7
+         this is requested at RUNTIME ONLY when the user explicitly enables
+         Auto-detect in Settings — never at first launch, and Play Store's
+         restricted-permission disclosure requirement (see spec section 7 /
+         README) must be satisfied before this ships.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <application
+        android:name=".WardenApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Warden"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Warden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+        Sprint 5: notification action buttons ("Mark serviced", "Snooze")
+        deliver here via PendingIntent.getBroadcast — never triggered by
+        anything outside this app, so exported="false".
+        -->
+        <receiver
+            android:name=".reminders.ReminderActionReceiver"
+            android:exported="false" />
+
+        <!--
+        Sprint 2: needed for CameraX to hand a captured photo's content:// URI
+        to other apps / for the capture flow to read it back. Only
+        filesDir/attachments/ is exposed (see res/xml/file_paths.xml).
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!--
+        Sprint 3: Share-intent capture (images AND PDFs — this is the "share
+        from WhatsApp/Gmail/Files" flow from spec section 4).
+        -->
+        <activity
+            android:name=".capture.ShareReceiverActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

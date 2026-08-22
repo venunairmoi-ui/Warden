@@ -1,0 +1,211 @@
+package com.venunair.warden.ocr
+
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.util.Locale
+
+/**
+ * Best-effort field guesses pulled from an attachment's raw OCR text.
+ * Every field is nullable, and "found nothing" is the ordinary, expected
+ * outcome for a lot of real documents -- not an error condition. Nothing
+ * here is meant to be trusted blindly: AddEditItemScreen only ever uses
+ * these to pre-fill fields that are STILL BLANK, which the user then
+ * reviews (and can freely overwrite) before the Save button that actually
+ * commits anything. That's the same principle Sprint 4's own scope note
+ * calls out directly: on messy Indian invoices, a wrong silent guess is
+ * worse than a five-second manual confirm -- and it's also exactly what
+ * this app's pending-attachment redesign already established for the
+ * attach-then-review flow generally.
+ *
+ * Deliberately does NOT propose a Name -- unlike vendor/date/cost, there's
+ * no reliable text-pattern signal for "what is this item actually called"
+ * on a generic receipt or warranty card (no currency symbol, no keyword,
+ * nothing to anchor a regex to). An earlier version of this file used "the
+ * first substantial text line" as a low-confidence Name/vendor fallback;
+ * dropped after checking it against a spread of realistic Indian invoice
+ * layouts, where that line is at least as often a GSTIN, an invoice
+ * number, or a header ("TAX INVOICE") as it is an actual vendor name --
+ * exactly the kind of confidently-wrong guess this file exists to avoid.
+ */
+data class ParsedReceiptFields(
+    val vendor: String? = null,
+    val purchaseDate: LocalDate? = null,
+    val cost: Double? = null
+)
+
+// Deliberately narrow, high-precision candidate patterns over broad ones --
+// see the class doc comment above for why a wrong guess here is worse than
+// no guess. DATE_FORMATS assumes day-first (Indian convention), consistent
+// with the rest of this app's date handling (ui/common's Indian date/
+// currency formatters) and the "Purchase date" field, which is optional
+// and never feeds reminder logic (only Item.expiryDate does, and OCR never
+// touches that field) -- so a wrong parse here is low-stakes and always
+// user-reviewable, not silently propagated into anything that fires a
+// notification.
+private val DATE_FORMATS = listOf(
+    "d/M/yyyy", "d-M-yyyy", "d.M.yyyy",
+    "d/M/yy", "d-M-yy",
+    "d MMM yyyy", "d MMMM yyyy",
+    "MMM d, yyyy", "MMMM d, yyyy",
+    "yyyy-MM-dd"
+).map { DateTimeFormatter.ofPattern(it, Locale.ENGLISH) }
+
+// Broad on purpose -- this only finds CANDIDATE substrings; DATE_FORMATS
+// above does the real validation via an actual parse attempt, so a
+// candidate that isn't really a date (e.g. a serial number that happens to
+// look date-shaped) just fails every format and is silently skipped.
+private val DATE_CANDIDATE_REGEX = Regex(
+    """\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b"""
+)
+
+// A real Indian retail invoice routinely prints several OTHER dates that
+// have nothing to do with when the item was bought -- confirmed against
+// two real Reliance Digital invoices, where a plain "first date found"
+// picked a delivery-window date on one and a coupon's "Redeem EndDate" on
+// the other, instead of either invoice's own "Dt:"-labeled transaction
+// date. Any line carrying one of these is excluded from date
+// consideration entirely, in both passes of findDate below.
+private val EXCLUDED_DATE_LINE_KEYWORDS = listOf(
+    "delivery", "datetime", "redeem", "valid", "expiry", "expires", "due date"
+)
+
+// A line carrying one of these is a much stronger signal that ITS date is
+// the actual transaction/purchase date, rather than some other date that
+// merely happens to appear on the page. Checked before falling back to
+// "any remaining date-shaped candidate" -- see findDate.
+private val PREFERRED_DATE_LINE_KEYWORDS = listOf(
+    "dt:", "date:", "invoice date", "bill date", "purchase date", "transaction date"
+)
+
+// Requires an explicit currency marker (Rs./Rs/INR or the literal Rupee
+// sign), deliberately -- a bare number with no marker is exactly as likely
+// to be a phone number, a warranty-card serial, or a GSTIN as it is a
+// price, and this file's whole design principle is precision over recall.
+private val AMOUNT_REGEX = Regex(
+    "(?:₹|Rs\\.?|INR)\\s?([\\d,]+(?:\\.\\d{1,2})?)",
+    RegexOption.IGNORE_CASE
+)
+
+// Used ONLY as a fallback restricted to a line that already matched
+// TOTAL_LINE_KEYWORDS -- see findCost. Requires two decimal places
+// specifically so it can't accidentally grab a bare quantity ("1EA"), a GST
+// percentage ("9.00%" is excluded by requiring no trailing '%' context via
+// the keyword-line restriction, not by this pattern alone), or an HSN/SAC
+// code, while still matching a real amount column that has no currency
+// symbol printed next to it -- confirmed necessary against a real Reliance
+// Digital e-invoice where every amount in the itemized/total table is a
+// bare "121011.31" with no Rs./₹ anywhere near it (the currency is only
+// named once, in a distant column header).
+private val PLAIN_TOTAL_AMOUNT_REGEX = Regex("""[\d,]+\.\d{2}""")
+
+// "balance due" and "amount due" added after a real Reliance Digital
+// invoice used "BALANCE DUE" as its only total-line label -- "total" alone
+// didn't cover it. Order matters only in that these are all checked
+// per-line as OR conditions, not tried in priority order against a single
+// line; the first line (in document order) that matches ANY of these wins.
+private val TOTAL_LINE_KEYWORDS = listOf(
+    "grand total", "total amount", "amount paid", "net amount",
+    "balance due", "amount due", "total"
+)
+
+// A short, high-confidence list of brands/vendors likely to show up on a
+// real Indian household's warranty cards, AMC contracts, and subscription
+// receipts -- matched literally against the OCR text, case-insensitive.
+// Intentionally NOT exhaustive: recall is sacrificed for precision here,
+// same reasoning as the rest of this file. Extend this list first if
+// real-device testing (the Sprint 4 acceptance check) turns up common
+// vendors it keeps missing.
+private val KNOWN_VENDORS = listOf(
+    "LG", "Samsung", "Whirlpool", "Voltas", "Godrej", "Bosch", "IFB", "Haier",
+    "Blue Star", "Daikin", "Hitachi", "Panasonic", "Sony", "OnePlus", "Xiaomi",
+    "Apple", "Croma", "Reliance Digital", "Amazon", "Flipkart", "Otis",
+    "Kone", "Schindler", "HDFC ERGO", "ICICI Lombard", "Bajaj Allianz",
+    "Netflix", "Airtel", "Jio", "Havells", "Crompton", "Philips"
+)
+
+fun parseReceiptFields(rawText: String): ParsedReceiptFields {
+    val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    return ParsedReceiptFields(
+        vendor = findVendor(rawText),
+        purchaseDate = findDate(lines),
+        cost = findCost(lines, rawText)
+    )
+}
+
+private fun findVendor(rawText: String): String? =
+    KNOWN_VENDORS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
+
+private fun findDate(lines: List<String>): LocalDate? {
+    // Pass 1: a date on a line explicitly labeled as THE date (and not
+    // also an excluded one -- excluded always wins over preferred, so a
+    // line can't qualify via both).
+    findDateIn(
+        lines.filter { line ->
+            PREFERRED_DATE_LINE_KEYWORDS.any { kw -> line.contains(kw, ignoreCase = true) } &&
+                EXCLUDED_DATE_LINE_KEYWORDS.none { kw -> line.contains(kw, ignoreCase = true) }
+        }
+    )?.let { return it }
+    // Pass 2: nothing explicitly labeled -- fall back to the first
+    // date-shaped candidate on any line that at least isn't already known
+    // to mean something else (delivery window, coupon validity, etc.).
+    return findDateIn(
+        lines.filterNot { line ->
+            EXCLUDED_DATE_LINE_KEYWORDS.any { kw -> line.contains(kw, ignoreCase = true) }
+        }
+    )
+}
+
+private fun findDateIn(candidateLines: List<String>): LocalDate? {
+    candidateLines.forEach { line ->
+        DATE_CANDIDATE_REGEX.findAll(line).forEach { match ->
+            for (formatter in DATE_FORMATS) {
+                try {
+                    return LocalDate.parse(match.value, formatter)
+                } catch (e: DateTimeParseException) {
+                    // Not this format -- try the next one against the same
+                    // candidate substring before moving on to the next match.
+                }
+            }
+        }
+    }
+    return null
+}
+
+private fun findCost(lines: List<String>, rawText: String): Double? {
+    // Prefer an amount that sits on a line naming itself as a total --
+    // line-item prices earlier on an invoice are individually smaller and
+    // less relevant than the total actually paid.
+    lines.forEach { line ->
+        if (TOTAL_LINE_KEYWORDS.any { keyword -> line.contains(keyword, ignoreCase = true) }) {
+            // Currency-marked amount on this line, if there is one -- the
+            // higher-confidence signal, tried first.
+            AMOUNT_REGEX.find(line)?.let { match -> return parseAmount(match.groupValues[1]) }
+            // No currency symbol on this line (common on machine-generated
+            // Indian retail invoices, where the amount column only names
+            // its currency once, in a header far above) -- fall back to
+            // the LAST plain decimal number on this SAME keyword-matched
+            // line. Restricted to this one line, not the whole document,
+            // so this still only ever trusts a number that's explicitly
+            // labeled a total, never a bare number found by scanning
+            // everything. "Last" because a totals row is conventionally
+            // laid out taxable-amount / tax-amount / final-total, left to
+            // right -- e.g. "TOTAL:  94699.27  26312.04  121011.31", where
+            // 121011.31 (rightmost) is the one actually charged.
+            PLAIN_TOTAL_AMOUNT_REGEX.findAll(line).lastOrNull()
+                ?.let { match -> return parseAmount(match.value) }
+        }
+    }
+    // Fallback: no line was explicitly labeled a total, so the largest
+    // currency-marked amount anywhere on the page is a reasonable proxy --
+    // a grand total is very rarely smaller than every line-item price that
+    // makes it up. Still requires a currency marker here, deliberately --
+    // with no keyword line to anchor to at all, a bare number search
+    // across the whole document would be exactly the low-precision guess
+    // this file's design avoids everywhere else.
+    return AMOUNT_REGEX.findAll(rawText)
+        .mapNotNull { match -> parseAmount(match.groupValues[1]) }
+        .maxOrNull()
+}
+
+private fun parseAmount(raw: String): Double? = raw.replace(",", "").toDoubleOrNull()

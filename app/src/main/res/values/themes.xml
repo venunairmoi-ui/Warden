@@ -1,0 +1,9 @@
+<resources>
+    <!--
+         Minimal manifest-level theme — only used as the pre-Compose splash
+         background. All real theming (colors, typography, dark mode, Material
+         You dynamic color) lives in ui/theme/Theme.kt via WardenTheme{}, which
+         takes over the instant setContent{} runs in MainActivity.
+    -->
+    <style name="Theme.Warden" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
