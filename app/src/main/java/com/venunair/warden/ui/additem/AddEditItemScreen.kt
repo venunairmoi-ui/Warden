@@ -295,12 +295,31 @@ fun AddEditItemScreen(
             // two different outputs of the same underlying page/photo. See
             // PdfPageRenderer.saveAsJpeg's doc comment for the PDF half of
             // this.
+            //
+            // Wrapped in runCatching -- PdfPageRenderer.renderPage doesn't
+            // catch its own PdfRenderer/ParcelFileDescriptor calls (see its
+            // own source), so an unusual PDF that trips one of those up
+            // would otherwise throw straight out of this whole function,
+            // silently losing the attachment itself (the persist calls at
+            // the bottom of this try block would never run) instead of just
+            // losing the OCR pre-fill, which is the only thing this attach
+            // flow ever promises. Same reasoning as the ocrBitmap?.let{}
+            // wrapping recognizeText just below -- attaching the file is
+            // this screen's real job; OCR pre-fill is best-effort on top.
             val ocrBitmap: Bitmap? = when (mimeType) {
-                AttachmentMimeType.PDF -> PdfPageRenderer.renderPage(context, localUri)
+                AttachmentMimeType.PDF -> runCatching { PdfPageRenderer.renderPage(context, localUri) }.getOrNull()
                 AttachmentMimeType.IMAGE -> decodeBitmapForOcr(context, localUri.toString())
             }
 
-            val thumbnailUri = if (mimeType == AttachmentMimeType.PDF && ocrBitmap != null) {
+            // var, not val -- see the multi-page loop below, which fills
+            // this in from a later page if page 0's render didn't produce
+            // one. Confirmed necessary from a real user's on-device report:
+            // a real invoice's OCR pre-fill worked correctly (meaning its
+            // page-2 text was read fine) while its thumbnail came back
+            // empty -- exactly what page 0's render failing while later
+            // pages succeed would produce, since this was the ONLY place
+            // a thumbnail ever got generated from.
+            var thumbnailUri = if (mimeType == AttachmentMimeType.PDF && ocrBitmap != null) {
                 val thumbFile = File(AttachmentStorage.attachmentsDir(context), "${UUID.randomUUID()}_thumb.jpg")
                 if (PdfPageRenderer.saveAsJpeg(ocrBitmap, thumbFile)) {
                     AttachmentStorage.uriForFile(context, thumbFile).toString()
@@ -338,9 +357,27 @@ fun AddEditItemScreen(
             // and recycled one at a time -- never held alongside the others
             // -- to keep peak memory to a single page.
             if (mimeType == AttachmentMimeType.PDF) {
-                val pageCount = PdfPageRenderer.pageCount(context, localUri)
+                // Both PdfPageRenderer calls wrapped for the same reason as
+                // the page-0 render above -- pageCount() opens its own
+                // ParcelFileDescriptor/PdfRenderer independently of the
+                // page-0 call already made, so it's an equally real
+                // opportunity for an uncaught throw to abort attachment
+                // persistence entirely, not just this best-effort loop.
+                val pageCount = runCatching { PdfPageRenderer.pageCount(context, localUri) }.getOrDefault(0)
                 for (pageIndex in 1 until minOf(pageCount, MAX_OCR_PAGES)) {
-                    val pageBitmap = PdfPageRenderer.renderPage(context, localUri, pageIndex) ?: continue
+                    val pageBitmap = runCatching { PdfPageRenderer.renderPage(context, localUri, pageIndex) }
+                        .getOrNull() ?: continue
+                    // Page 0's render failed to produce a thumbnail above --
+                    // better a later page's thumbnail than none at all, and
+                    // this is already a bitmap this loop rendered anyway.
+                    // Only ever fires once: as soon as thumbnailUri is set,
+                    // every later iteration skips this block.
+                    if (thumbnailUri == null) {
+                        val thumbFile = File(AttachmentStorage.attachmentsDir(context), "${UUID.randomUUID()}_thumb.jpg")
+                        if (PdfPageRenderer.saveAsJpeg(pageBitmap, thumbFile)) {
+                            thumbnailUri = AttachmentStorage.uriForFile(context, thumbFile).toString()
+                        }
+                    }
                     runCatching { recognizeText(pageBitmap) }.getOrNull()?.text
                         ?.takeIf { it.isNotBlank() }
                         ?.let { ocrTextParts.add(it) }

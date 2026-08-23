@@ -23,8 +23,8 @@ android {
         // rebuild with the latest code" impossible to self-check. Check
         // Settings > Apps > Warden > App details (or long-press the icon >
         // App info) to see versionName on-device before re-testing a fix.
-        versionCode = 2
-        versionName = "0.4.2-sprint4-ocr-datefix"
+        versionCode = 10
+        versionName = "0.4.10-sprint4-complete"
 
         vectorDrawables { useSupportLibrary = true }
     }

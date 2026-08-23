@@ -55,8 +55,26 @@ private val DATE_FORMATS = listOf(
 // above does the real validation via an actual parse attempt, so a
 // candidate that isn't really a date (e.g. a serial number that happens to
 // look date-shaped) just fails every format and is silently skipped.
+//
+// Tolerates ONE stray space wedged inside a digit group -- confirmed via a
+// real user's on-device "Scanned text" export (Warden's raw-OCR viewer,
+// 2026-08-22): ML Kit read a printed "05/04/2025" back as "05/04/2 025",
+// splitting the year after its first digit. Neither of this file's other
+// two verification methods -- pdftotext's embedded-text extraction, or a
+// desktop Tesseract pass on a page rendered the same way the app does --
+// reproduced that corruption, which is exactly why this shipped looking
+// correct twice before failing for real. A day or month group only ever
+// needs to tolerate a split after its first digit (it's 1-2 printed
+// digits); a year group needs a wider tail since the observed split lands
+// after just the first of up to four digits. The matched substring
+// (including any internal space) is stripped down to bare digits in
+// findDateIn below, immediately before being handed to DATE_FORMATS --
+// never anywhere broader than that one already-date-shaped substring, so
+// this can't merge unrelated numbers sitting elsewhere on the same line.
+private const val DAY_OR_MONTH_GROUP = """\d\s?\d?"""
+private const val YEAR_GROUP = """\d\s?\d{1,3}"""
 private val DATE_CANDIDATE_REGEX = Regex(
-    """\b(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b"""
+    """\b($DAY_OR_MONTH_GROUP[/\-.]\s?$DAY_OR_MONTH_GROUP[/\-.]\s?$YEAR_GROUP|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})\b"""
 )
 
 // A real Indian retail invoice routinely prints several OTHER dates that
@@ -159,9 +177,15 @@ private fun findDate(lines: List<String>): LocalDate? {
 private fun findDateIn(candidateLines: List<String>): LocalDate? {
     candidateLines.forEach { line ->
         DATE_CANDIDATE_REGEX.findAll(line).forEach { match ->
+            // Strip any stray internal space DATE_CANDIDATE_REGEX tolerated
+            // (see its comment) before parsing -- DATE_FORMATS' patterns
+            // have no whitespace in them, so "05/04/2 025" needs to become
+            // "05/04/2025" right here to actually parse. Scoped to just
+            // this one matched substring, never the whole line.
+            val candidate = match.value.replace(Regex("""\s+"""), "")
             for (formatter in DATE_FORMATS) {
                 try {
-                    return LocalDate.parse(match.value, formatter)
+                    return LocalDate.parse(candidate, formatter)
                 } catch (e: DateTimeParseException) {
                     // Not this format -- try the next one against the same
                     // candidate substring before moving on to the next match.
@@ -203,8 +227,32 @@ private fun findCost(lines: List<String>, rawText: String): Double? {
     // with no keyword line to anchor to at all, a bare number search
     // across the whole document would be exactly the low-precision guess
     // this file's design avoids everywhere else.
-    return AMOUNT_REGEX.findAll(rawText)
+    AMOUNT_REGEX.findAll(rawText)
         .mapNotNull { match -> parseAmount(match.groupValues[1]) }
+        .maxOrNull()
+        ?.let { return it }
+    // Last resort: the largest plain-decimal amount that appears 2+ times
+    // anywhere in the document. Confirmed necessary from a real user's
+    // on-device "Scanned text" export: ML Kit recognized this invoice's
+    // label column ("BALANCE DUE", "TOTAL:", ...) and its value column
+    // (the actual amounts) as two SEPARATE text blocks, so every
+    // keyword line above matched with no number anywhere on it -- neither
+    // pdftotext's embedded-text extraction nor a desktop Tesseract pass
+    // reproduced this, both kept label and value on one line. A real
+    // grand total on an Indian retail invoice is reliably printed more
+    // than once (the bill body, then again in the GST summary table, and
+    // sometimes a footer); incidental noise that happens to be a 2-decimal
+    // number (a GST rate, a line-item price) is both far smaller and much
+    // less likely to repeat exactly. Only reached when NOTHING above found
+    // a number at all, so this never overrides a same-line or
+    // currency-marked match -- it's specifically the split-block case.
+    val counts = PLAIN_TOTAL_AMOUNT_REGEX.findAll(rawText)
+        .map { match -> match.value }
+        .groupingBy { it }
+        .eachCount()
+    return counts.filterValues { count -> count >= 2 }
+        .keys
+        .mapNotNull { raw -> parseAmount(raw) }
         .maxOrNull()
 }
 

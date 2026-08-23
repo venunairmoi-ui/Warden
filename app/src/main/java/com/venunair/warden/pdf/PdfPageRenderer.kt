@@ -2,6 +2,7 @@ package com.venunair.warden.pdf
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -48,6 +49,32 @@ object PdfPageRenderer {
                         page.height * RENDER_SCALE,
                         Bitmap.Config.ARGB_8888
                     )
+                    // Root cause of the AMC receipt's empty thumbnail AND
+                    // "no text found" -- confirmed via PdfRenderer's own
+                    // javadoc ("it is your responsibility to initialize the
+                    // bitmap outside the clip") plus Google's own
+                    // PrintSpooler source doing exactly this before calling
+                    // page.render(). A freshly created Bitmap is NOT
+                    // guaranteed to start white -- in practice it's
+                    // transparent black (0x00000000) -- and PdfRenderer only
+                    // paints what the PDF's own content stream explicitly
+                    // draws. A PDF that (like this AMC receipt, unlike the
+                    // Chrome-generated invoice that happened to mask this)
+                    // doesn't paint its own opaque page-background rectangle
+                    // leaves everything else exactly as transparent as it
+                    // started. Compose's Image composable alpha-composites
+                    // that transparency onto the dialog's own white
+                    // background, so the PDF PREVIEW still looked fine --
+                    // but Bitmap.compress(JPEG, ...) has no alpha channel to
+                    // composite with (Android bitmaps store premultiplied
+                    // alpha, so transparent pixels' stored RGB bytes are
+                    // literally 0,0,0) and flattens those regions to solid
+                    // BLACK, exactly matching the empty/black thumbnail --
+                    // and ML Kit's recognizer reads raw RGB the same way,
+                    // seeing dark text on a black (not white) background,
+                    // exactly matching "no text found" on an otherwise
+                    // perfectly legible page.
+                    bitmap.eraseColor(Color.WHITE)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     return bitmap
                 }
@@ -85,9 +112,17 @@ object PdfPageRenderer {
      * cacheThumbnail's inlined version never did before this was extracted.
      */
     fun saveAsJpeg(bitmap: Bitmap, targetFile: File, quality: Int = 85): Boolean {
-        FileOutputStream(targetFile).use { out ->
+        // Bitmap.compress() returns whether the encode+write actually
+        // succeeded -- this used to discard that and unconditionally
+        // return true, which meant a failed compress() still left the
+        // caller believing it had a valid thumbnail file to point
+        // Attachment.thumbnailUri at (silently producing an empty/corrupt
+        // JPEG on disk instead of correctly falling back to no thumbnail).
+        // Same class of bug ui/common/LocalBitmap.kt's decodeSampledBitmap
+        // doc comment already warns about elsewhere in this codebase:
+        // dropping a success/failure signal on the floor.
+        return FileOutputStream(targetFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
         }
-        return true
     }
 }

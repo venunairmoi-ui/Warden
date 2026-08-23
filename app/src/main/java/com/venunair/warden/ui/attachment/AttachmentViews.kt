@@ -1,33 +1,47 @@
 package com.venunair.warden.ui.attachment
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +49,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.venunair.warden.data.Attachment
@@ -156,10 +172,23 @@ fun AttachmentThumbnailRow(
  * at full quality via PdfPageRenderer rather than reusing the small cached
  * thumbnail -- the thumbnail is deliberately low-res for fast list display,
  * this dialog is where a user actually reads the document.
+ *
+ * Also surfaces the raw ML Kit text this attachment's OCR pass produced
+ * (Attachment.rawOcrText), collapsed behind a "Scanned text" toggle so it
+ * doesn't clutter the common case of just viewing the photo/PDF. This
+ * isn't a debug-only affordance -- it's the one place that shows exactly
+ * what the on-device OCR actually read, which is what
+ * ocr/ReceiptFieldParser.kt's Vendor/Date/Cost guesses are built from.
+ * Reading it explains a wrong guess (a misread character, a line the
+ * parser's keyword rules didn't anchor to) far better than staring at the
+ * wrong pre-filled field alone would -- and the Copy button makes it easy
+ * to hand that exact text along when reporting a bad guess.
  */
 @Composable
 fun AttachmentViewerDialog(attachment: Attachment, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var showRawOcrText by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -167,40 +196,79 @@ fun AttachmentViewerDialog(attachment: Attachment, onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text("Close") }
         },
         text = {
-            when (attachment.mimeType) {
-                AttachmentMimeType.IMAGE -> {
-                    val bitmap = rememberLocalThumbnail(attachment.localFileUri, reqSizePx = 1200)
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height),
-                            contentScale = ContentScale.Fit
-                        )
-                    } else {
-                        Box(Modifier.fillMaxWidth().size(200.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                when (attachment.mimeType) {
+                    AttachmentMimeType.IMAGE -> {
+                        val bitmap = rememberLocalThumbnail(attachment.localFileUri, reqSizePx = 1200)
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Box(Modifier.fillMaxWidth().size(200.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    }
+                    AttachmentMimeType.PDF -> {
+                        val pageBitmap = produceState<ImageBitmap?>(initialValue = null, key1 = attachment.localFileUri) {
+                            value = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    PdfPageRenderer.renderPage(context, attachment.localFileUri.toUri())?.asImageBitmap()
+                                }.getOrNull()
+                            }
+                        }.value
+                        if (pageBitmap != null) {
+                            Image(
+                                bitmap = pageBitmap,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().aspectRatio(pageBitmap.width.toFloat() / pageBitmap.height),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Box(Modifier.fillMaxWidth().size(200.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
                         }
                     }
                 }
-                AttachmentMimeType.PDF -> {
-                    val pageBitmap = produceState<ImageBitmap?>(initialValue = null, key1 = attachment.localFileUri) {
-                        value = withContext(Dispatchers.IO) {
-                            runCatching {
-                                PdfPageRenderer.renderPage(context, attachment.localFileUri.toUri())?.asImageBitmap()
-                            }.getOrNull()
-                        }
-                    }.value
-                    if (pageBitmap != null) {
-                        Image(
-                            bitmap = pageBitmap,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(pageBitmap.width.toFloat() / pageBitmap.height),
-                            contentScale = ContentScale.Fit
+
+                attachment.rawOcrText?.takeIf { it.isNotBlank() }?.let { rawText ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .clickable { showRawOcrText = !showRawOcrText },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Scanned text", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        Icon(
+                            if (showRawOcrText) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (showRawOcrText) "Hide scanned text" else "Show scanned text"
                         )
-                    } else {
-                        Box(Modifier.fillMaxWidth().size(200.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
+                    }
+                    if (showRawOcrText) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            SelectionContainer(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    rawText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .heightIn(max = 220.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(top = 4.dp)
+                                )
+                            }
+                            IconButton(onClick = {
+                                clipboardManager.setText(AnnotatedString(rawText))
+                                Toast.makeText(context, "Scanned text copied", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy scanned text")
+                            }
                         }
                     }
                 }

@@ -173,6 +173,50 @@ signals in spec section 9, and the first real signal for whether
 `ocr/ReceiptFieldParser.kt`'s known-vendor list and date/amount patterns
 need extending.
 
+**Real-device hardening (post-ship, from actual Reliance Digital invoices):**
+the acceptance check above surfaced five real bugs no amount of sandbox
+simulation caught, because the sandbox has no ML Kit/PdfRenderer runtime —
+verification there could only ever run a proxy (pdftotext's embedded-text
+extraction, later a desktop Tesseract pass), and real on-device output
+diverged from both in ways that mattered:
+- Multi-page PDFs: OCR originally scanned page 1 only, but item/date/total
+  are routinely on page 2. Fixed via `MAX_OCR_PAGES` (caps at 3, one bitmap
+  in memory at a time).
+- Date selection: a naive "first date found" picked delivery-window or
+  coupon-expiry dates over the invoice's own transaction date. Fixed via
+  keyword-anchored line filtering (`PREFERRED_`/`EXCLUDED_DATE_LINE_KEYWORDS`).
+- Real ML Kit output (not reproduced by either sandbox proxy) sometimes
+  wedges a stray space mid-digit-run (`"2025"` → `"2 025"`), and can
+  recognize a label and its value as separate text blocks entirely (a
+  totals line's number ending up nowhere near its "BALANCE DUE" label).
+  `ReceiptFieldParser`'s date regex now tolerates one internal space per
+  digit group; `findCost` falls back to the largest amount that repeats 2+
+  times in the document when no label line has a number on it at all.
+  Added `ui/attachment/AttachmentViewerDialog`'s "Scanned text" panel
+  (surfaces `Attachment.rawOcrText` with a copy button) specifically to get
+  real on-device ground truth for cases like this going forward, instead of
+  guessing from a sandbox proxy again.
+- PDF thumbnail generation only ever used page 0's render; when page 0
+  specifically failed to render, the thumbnail silently stayed empty even
+  though later pages (and their OCR) worked fine. Fixed by falling back to
+  whichever page renders first.
+- Root cause of the last case, and of one PDF producing NO OCR text at all
+  despite rendering visibly fine in-app: `Bitmap.createBitmap()` doesn't
+  guarantee a white background (in practice, transparent black), and
+  `PdfRenderer` only paints what a PDF's content stream explicitly draws —
+  a PDF that doesn't paint its own opaque page-background (unlike the
+  Chrome-generated invoice that happened to mask this) renders correctly
+  enough for Compose's alpha-blended on-screen preview, but flattens to
+  solid black once JPEG-compressed (no alpha channel) and reads as
+  black-on-black to ML Kit. Fixed with one line matching Google's own
+  PrintSpooler source: `bitmap.eraseColor(Color.WHITE)` before
+  `page.render(...)`.
+
+`versionCode`/`versionName` (`app/build.gradle.kts`) started actually
+getting bumped with each fix partway through this, specifically so build
+freshness could be verified on-device before re-testing — worth keeping up
+going forward.
+
 ## Sprint 5 — Reminders + notification actions ✅
 
 **Scope:** turn the `ReminderRule` rows that already get created on every
