@@ -82,5 +82,10 @@ fun WardenTheme(
         darkTheme -> DarkColors
         else -> LightColors
     }
-    MaterialTheme(colorScheme = colorScheme, shapes = WardenShapes, content = content)
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = WardenTypography,
+        shapes = WardenShapes,
+        content = content,
+    )
 }

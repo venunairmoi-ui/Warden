@@ -31,7 +31,11 @@ import java.util.Locale
 data class ParsedReceiptFields(
     val vendor: String? = null,
     val purchaseDate: LocalDate? = null,
-    val cost: Double? = null
+    val cost: Double? = null,
+    /** Sprint 6: serial number extracted from labeled text on the document. */
+    val serialNumber: String? = null,
+    /** Sprint 6: model number extracted from labeled text on the document. */
+    val modelNumber: String? = null
 )
 
 // Deliberately narrow, high-precision candidate patterns over broad ones --
@@ -147,7 +151,9 @@ fun parseReceiptFields(rawText: String): ParsedReceiptFields {
     return ParsedReceiptFields(
         vendor = findVendor(rawText),
         purchaseDate = findDate(lines),
-        cost = findCost(lines, rawText)
+        cost = findCost(lines, rawText),
+        serialNumber = findLabeledValue(lines, SERIAL_NUMBER_KEYWORDS),
+        modelNumber = findLabeledValue(lines, MODEL_NUMBER_KEYWORDS)
     )
 }
 
@@ -257,3 +263,49 @@ private fun findCost(lines: List<String>, rawText: String): Double? {
 }
 
 private fun parseAmount(raw: String): Double? = raw.replace(",", "").toDoubleOrNull()
+
+// Sprint 6: serial/model number extraction — same precision-over-recall
+// philosophy as the rest of this file. Only looks for values explicitly
+// labeled on the document; a bare alphanumeric string sitting alone on a
+// line is too ambiguous to be useful as a serial or model guess.
+private val SERIAL_NUMBER_KEYWORDS = listOf(
+    "serial no", "serial number", "sr. no", "sr no", "s/n", "s.n.",
+    "serial #", "imei", "vin"
+)
+private val MODEL_NUMBER_KEYWORDS = listOf(
+    "model no", "model number", "model name", "model #", "model:",
+    "product code", "part no", "part number", "sku"
+)
+
+/**
+ * Finds a value on a line that contains one of the given keywords,
+ * extracting everything after the keyword+separator. Returns null if no
+ * labeled value is found or if the extracted value is too short to be
+ * meaningful (a single character or blank).
+ *
+ * Handles common label formats on Indian invoices and warranty cards:
+ *   "Serial No: ABC123-XYZ"
+ *   "Model Number - GL-T292RPZX"
+ *   "S/N ABC123"
+ *   "IMEI: 123456789012345"
+ */
+private fun findLabeledValue(lines: List<String>, keywords: List<String>): String? {
+    for (line in lines) {
+        for (keyword in keywords) {
+            val idx = line.indexOf(keyword, ignoreCase = true)
+            if (idx < 0) continue
+            // Skip past the keyword, then past any separator characters
+            val afterKeyword = line.substring(idx + keyword.length).trimStart()
+            val value = afterKeyword
+                .removePrefix(":")
+                .removePrefix("-")
+                .removePrefix("#")
+                .removePrefix(".")
+                .trim()
+            // At least 2 chars to be a plausible serial/model — a single
+            // character is more likely OCR noise than a real value.
+            if (value.length >= 2) return value
+        }
+    }
+    return null
+}

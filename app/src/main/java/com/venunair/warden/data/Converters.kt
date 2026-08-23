@@ -24,4 +24,12 @@ class Converters {
     @TypeConverter fun fromSourceName(value: String?): AttachmentSource? =
         value?.let { AttachmentSource.valueOf(it) }
     @TypeConverter fun sourceToName(source: AttachmentSource?): String? = source?.name
+
+    // Sprint 6: new enum converters
+
+    @TypeConverter fun fromItemTypeName(value: String?): ItemType? = value?.let { ItemType.valueOf(it) }
+    @TypeConverter fun itemTypeToName(itemType: ItemType?): String? = itemType?.name
+
+    @TypeConverter fun fromBillingCycleName(value: String?): BillingCycle? = value?.let { BillingCycle.valueOf(it) }
+    @TypeConverter fun billingCycleToName(cycle: BillingCycle?): String? = cycle?.name
 }

@@ -1,5 +1,9 @@
 package com.venunair.warden.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +59,11 @@ data class PendingShare(
     val nonce: Int
 )
 
+/** Shared transition duration — 300ms is Material3's recommended medium
+ *  emphasis duration, slow enough to read but fast enough to not feel
+ *  sluggish on repeated back-and-forth navigation. */
+private const val NAV_ANIM_DURATION = 300
+
 @Composable
 fun WardenNavHost(
     repository: ItemRepository,
@@ -87,7 +96,37 @@ fun WardenNavHost(
         }
     }
 
-    NavHost(navController = navController, startDestination = WardenDestination.Home.route) {
+    NavHost(
+        navController = navController,
+        startDestination = WardenDestination.Home.route,
+        // Default transitions for all destinations: horizontal slide
+        // (forward = right-to-left, back = left-to-right) with a subtle
+        // fade so the transition doesn't jump harshly at the edges.
+        enterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                animationSpec = tween(NAV_ANIM_DURATION)
+            ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                animationSpec = tween(NAV_ANIM_DURATION)
+            ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = tween(NAV_ANIM_DURATION)
+            ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = tween(NAV_ANIM_DURATION)
+            ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
+        }
+    ) {
         composable(WardenDestination.Home.route) {
             HomeScreen(
                 repository = repository,
@@ -142,7 +181,36 @@ fun WardenNavHost(
                 onCapturedUriConsumed = { backStackEntry.savedStateHandle[CAPTURED_URI_KEY] = null }
             )
         }
-        composable(WardenDestination.CameraCapture.route) {
+        // Camera uses a vertical slide — it's a modal overlay, not a lateral
+        // navigation step, so sliding up/down reads as "this is a tool, not
+        // a new page". Overrides the NavHost-level horizontal defaults.
+        composable(
+            route = WardenDestination.CameraCapture.route,
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Up,
+                    animationSpec = tween(NAV_ANIM_DURATION)
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION))
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(NAV_ANIM_DURATION)
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
+            },
+            popEnterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Up,
+                    animationSpec = tween(NAV_ANIM_DURATION)
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION))
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(NAV_ANIM_DURATION)
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
+            }
+        ) {
             CameraCaptureScreen(
                 onCaptured = { uri ->
                     navController.previousBackStackEntry

@@ -23,8 +23,8 @@ android {
         // rebuild with the latest code" impossible to self-check. Check
         // Settings > Apps > Warden > App details (or long-press the icon >
         // App info) to see versionName on-device before re-testing a fix.
-        versionCode = 10
-        versionName = "0.4.10-sprint4-complete"
+        versionCode = 12
+        versionName = "0.6.0-sprint7"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -43,6 +43,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true  // Sprint 6: needed for BuildConfig.DEBUG gating of dev buttons
     }
 
     packaging {
@@ -50,6 +51,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+// Room schema export — writes a JSON schema file per database version into
+// app/schemas/ so Room can verify migrations at test time (and so the schema
+// history is version-controlled). Room 2.6.x reads this via KSP argument.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // Kotlin's `android.kotlinOptions {}` DSL is deprecated (kotl.in/u1r8ln) in favor

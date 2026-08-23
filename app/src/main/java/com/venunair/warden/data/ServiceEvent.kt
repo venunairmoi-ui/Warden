@@ -26,5 +26,7 @@ data class ServiceEvent(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val itemId: Long,
     val date: LocalDate,
-    val note: String? = null
+    val note: String? = null,
+    /** Cost of this service visit — needed for TCO calculation (Sprint 7). */
+    val cost: Double? = null,
 )

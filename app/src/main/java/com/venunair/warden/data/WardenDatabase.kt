@@ -5,20 +5,16 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Item::class, Attachment::class, ReminderRule::class, ServiceEvent::class],
     // 1 -> 2: Item.amcNumber. 2 -> 3: ReminderRule.lastFiredDate/snoozedUntil
-    // (Sprint 5). 3 -> 4: Attachment.thumbnailUri (Sprint 2). No real
-    // Migrations written for any of these — see fallbackToDestructiveMigration()
-    // below for why that's fine right now but must change before anyone
-    // else's data is on the line.
-    version = 4,
-    // false for now — schema export matters once you're writing real Room
-    // Migrations against user data (Sprint 7+ territory). Flip to true and
-    // apply the Room Gradle plugin with a schemaLocation if/when you get
-    // there; forcing it on now just produces a KSP warning for no benefit.
-    exportSchema = false
+    // (Sprint 5). 3 -> 4: Attachment.thumbnailUri (Sprint 2).
+    // 4 -> 5: Sprint 6 — data model expansion (see MIGRATION_4_5 below).
+    version = 5,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class WardenDatabase : RoomDatabase() {
@@ -30,6 +26,37 @@ abstract class WardenDatabase : RoomDatabase() {
     companion object {
         @Volatile private var INSTANCE: WardenDatabase? = null
 
+        /**
+         * v4 → v5: Sprint 6 data model expansion.
+         *
+         * Items gain: itemType, serialNumber, modelNumber, retailer,
+         * invoiceNumber, location, billingCycle, billingAmount, autoRenew.
+         *
+         * ServiceEvent gains: cost.
+         *
+         * All new columns are nullable (or have SQLite defaults) so existing
+         * rows upgrade without data loss. itemType defaults to 'PRODUCT'
+         * (most existing items are physical products with warranties).
+         * autoRenew defaults to 0 (false).
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Item new columns
+                db.execSQL("ALTER TABLE items ADD COLUMN itemType TEXT NOT NULL DEFAULT 'PRODUCT'")
+                db.execSQL("ALTER TABLE items ADD COLUMN serialNumber TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN modelNumber TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN retailer TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN invoiceNumber TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN location TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN billingCycle TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN billingAmount REAL DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN autoRenew INTEGER NOT NULL DEFAULT 0")
+
+                // ServiceEvent new column
+                db.execSQL("ALTER TABLE service_events ADD COLUMN cost REAL DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): WardenDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -37,17 +64,11 @@ abstract class WardenDatabase : RoomDatabase() {
                     WardenDatabase::class.java,
                     "warden.db"
                 )
-                    // TEMPORARY, dev-time only: the schema is still moving
-                    // sprint to sprint (this file's version 1->2 bump is the
-                    // second example) and the only data on the line right now
-                    // is your own test items. Wiping and recreating on a
-                    // version mismatch is the right tradeoff until real user
-                    // data exists — at that point this MUST be replaced with
-                    // an actual Migration(from, to) or upgraders will lose
-                    // their tracked warranties/AMCs, which is precisely the
-                    // failure mode this app exists to prevent. Flag this line
-                    // again before Sprint 7 / Play Store prep.
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_4_5)
+                    // Destructive fallback only for pre-v4 databases (dev-era
+                    // data before real migrations existed). Any v4+ database
+                    // upgrades through the migration chain above.
+                    .fallbackToDestructiveMigrationFrom(1, 2, 3)
                     .build().also { INSTANCE = it }
             }
     }

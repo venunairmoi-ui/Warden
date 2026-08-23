@@ -2,10 +2,12 @@ package com.venunair.warden.ui.additem
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.venunair.warden.data.BillingCycle
 import com.venunair.warden.data.Item
 import com.venunair.warden.data.ItemCategory
 import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.ItemStatus
+import com.venunair.warden.data.ItemType
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -32,11 +34,21 @@ class AddEditItemViewModel(
         name: String,
         vendor: String?,
         category: ItemCategory,
+        itemType: ItemType,
         purchaseDate: LocalDate?,
         expiryDate: LocalDate,
         cost: Double?,
         amcNumber: String?,
         notes: String?,
+        // Sprint 6 additions
+        serialNumber: String?,
+        modelNumber: String?,
+        retailer: String?,
+        invoiceNumber: String?,
+        location: String?,
+        billingCycle: BillingCycle?,
+        billingAmount: Double?,
+        autoRenew: Boolean,
         // Caller passes the loaded item's current status on an edit (it has
         // it, from the same Flow the rest of the form is pre-filled from).
         // Without this, every edit silently reset status back to the Item
@@ -52,12 +64,21 @@ class AddEditItemViewModel(
                 name = name,
                 vendor = vendor,
                 category = category,
+                itemType = itemType,
                 purchaseDate = purchaseDate,
                 expiryDate = expiryDate,
                 cost = cost,
                 amcNumber = amcNumber,
                 notes = notes,
-                status = status
+                status = status,
+                serialNumber = serialNumber,
+                modelNumber = modelNumber,
+                retailer = retailer,
+                invoiceNumber = invoiceNumber,
+                location = location,
+                billingCycle = billingCycle,
+                billingAmount = billingAmount,
+                autoRenew = autoRenew
                 // NOTE: createdAt resets to today on every edit since Item's
                 // default isn't preserved here. Harmless for now — nothing
                 // reads createdAt yet — but revisit if you add "sort by date

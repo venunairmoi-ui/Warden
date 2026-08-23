@@ -1,3 +1,124 @@
 <resources>
     <string name="app_name">Warden</string>
+
+    <!-- Home screen -->
+    <string name="home_title">Warden</string>
+    <string name="add_button">Add</string>
+    <string name="empty_state_title">Nothing tracked yet</string>
+    <string name="empty_state_body">Add your first warranty, subscription,\nor service contract to keep it safe.</string>
+    <string name="expired_label">Expired</string>
+    <string name="due_today_label">Due today</string>
+    <string name="days_left_label">%1$d d left</string>
+
+    <!-- Dev/testing (debug only) -->
+    <string name="dev_sample_data">Load sample data</string>
+    <string name="dev_sample_data_toast">Added sample items</string>
+    <string name="dev_check_reminders">Check reminders now</string>
+    <string name="dev_check_reminders_toast">Checking reminders…</string>
+
+    <!-- Add/Edit screen -->
+    <string name="add_item_title">Add item</string>
+    <string name="edit_item_title">Edit item</string>
+    <string name="field_name">Name (e.g. LG Refrigerator) *</string>
+    <string name="field_vendor">Vendor / brand</string>
+    <string name="field_category">Category</string>
+    <string name="field_item_type">Item type</string>
+    <string name="field_purchase_date">Purchase date (optional)</string>
+    <string name="field_expiry_date">Expiry / next due date *</string>
+    <string name="field_cost">Cost (optional)</string>
+    <string name="field_amc_number">AMC / warranty / policy number (optional)</string>
+    <string name="field_location">Location (e.g. Home, Office)</string>
+    <string name="field_notes">Notes (optional)</string>
+    <string name="field_serial_number">Serial number</string>
+    <string name="field_model_number">Model number</string>
+    <string name="field_retailer">Retailer / store</string>
+    <string name="field_invoice_number">Invoice number</string>
+    <string name="field_billing_cycle">Billing cycle</string>
+    <string name="field_billing_amount">Billing amount per cycle</string>
+    <string name="field_auto_renew">Auto-renews</string>
+    <string name="section_product_details">Product details</string>
+    <string name="section_billing">Billing</string>
+    <string name="required_fields">* Required</string>
+    <string name="save_button">Save</string>
+    <string name="error_name_required">Name is required.</string>
+    <string name="error_expiry_required">Pick an expiry / next due date.</string>
+    <string name="error_camera_permission">Camera permission is needed to take a photo.</string>
+    <string name="ocr_prefill_toast">Some fields were filled in from the scan — please check them</string>
+
+    <!-- Attachments -->
+    <string name="attachments_label">Attachments</string>
+    <string name="action_take_photo">Take photo</string>
+    <string name="action_choose_gallery">Choose from gallery</string>
+    <string name="action_attach_pdf">Attach PDF</string>
+    <string name="pick_date">Pick date</string>
+
+    <!-- Item Detail screen -->
+    <string name="item_fallback_title">Item</string>
+    <string name="loading">Loading…</string>
+    <string name="detail_category">Category</string>
+    <string name="detail_vendor">Vendor</string>
+    <string name="detail_purchased">Purchased</string>
+    <string name="detail_expires">Expires / next due</string>
+    <string name="detail_cost">Cost</string>
+    <string name="detail_amc_number">AMC / policy number</string>
+    <string name="detail_location">Location</string>
+    <string name="detail_serial_number">Serial number</string>
+    <string name="detail_model_number">Model number</string>
+    <string name="detail_retailer">Retailer</string>
+    <string name="detail_invoice_number">Invoice number</string>
+    <string name="detail_billing_cycle">Billing cycle</string>
+    <string name="detail_billing_amount">Billing amount</string>
+    <string name="detail_auto_renew">Auto-renews</string>
+    <string name="detail_notes">Notes</string>
+    <string name="no_value">—</string>
+    <string name="yes">Yes</string>
+
+    <!-- Urgency banner -->
+    <string name="expired_days_ago">Expired %1$d day ago</string>
+    <string name="expired_days_ago_plural">Expired %1$d days ago</string>
+    <string name="days_left">%1$d day left</string>
+    <string name="days_left_plural">%1$d days left</string>
+
+    <!-- Actions -->
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_back">Back</string>
+    <string name="mark_serviced">Mark serviced / renewed</string>
+
+    <!-- Delete confirmation -->
+    <string name="delete_confirm_title">Delete this item?</string>
+    <string name="delete_confirm_body_named">\"%1$s\" and any attached photos or documents will be permanently removed. This can\'t be undone.</string>
+    <string name="delete_confirm_body_generic">This item and any attached photos or documents will be permanently removed. This can\'t be undone.</string>
+    <string name="delete_button">Delete</string>
+    <string name="cancel_button">Cancel</string>
+
+    <!-- Mark serviced confirmation -->
+    <string name="mark_serviced_title">Mark as serviced?</string>
+    <string name="mark_serviced_body">This sets the next due date to %1$s — one year from the current expiry. If that\'s not right for this item (e.g. a one-off repair rather than an annual renewal), open Edit afterward and correct it.</string>
+    <string name="confirm_button">Confirm</string>
+    <string name="ok_button">OK</string>
+
+    <!-- Share -->
+    <string name="shared_item_default_name">Shared item</string>
+
+    <!-- Sprint 7: Home dashboard -->
+    <string name="section_expiring_soon">Expiring soon</string>
+    <string name="section_renewal_approaching">Renewal approaching</string>
+    <string name="section_active">Active</string>
+    <string name="summary_at_risk">At risk this month</string>
+    <string name="summary_monthly_subs">Monthly subscriptions</string>
+    <string name="summary_items_expiring">%1$d item expiring</string>
+    <string name="summary_items_expiring_plural">%1$d items expiring</string>
+    <string name="summary_active_count">%1$d active</string>
+    <string name="filter_all_locations">All locations</string>
+    <string name="no_filter_results">No items match the selected filters.</string>
+
+    <!-- Sprint 7: Detail screen -->
+    <string name="tco_title">Total cost of ownership</string>
+    <string name="tco_purchase_price">Purchase price</string>
+    <string name="tco_service_costs">Service costs (%1$d visit)</string>
+    <string name="tco_service_costs_plural">Service costs (%1$d visits)</string>
+    <string name="tco_total">Total</string>
+    <string name="tco_per_year">≈ %1$s / year</string>
+    <string name="service_history_title">Service history</string>
 </resources>
