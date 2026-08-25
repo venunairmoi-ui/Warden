@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
-import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -36,12 +39,15 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +82,8 @@ import com.venunair.warden.data.AttachmentSource
 import com.venunair.warden.data.BillingCycle
 import com.venunair.warden.data.Item
 import com.venunair.warden.data.ItemCategory
+import com.venunair.warden.data.AVAILABLE_REMINDER_OFFSETS
+import com.venunair.warden.data.DEFAULT_REMINDER_OFFSETS
 import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.ItemStatus
 import com.venunair.warden.data.ItemType
@@ -134,7 +143,17 @@ fun AddEditItemScreen(
     pendingShareUri: String? = null,
     pendingShareMimeType: String? = null,
     pendingShareDisplayName: String? = null,
-    onPendingShareConsumed: () -> Unit = {}
+    // Sprint 9: AttachmentSource.name() as a raw string — "SHARE" (default,
+    // matches every pre-Sprint-9 caller) or "AUTO_DETECT". See
+    // WardenNavHost's PendingShare.source doc comment for why this is a
+    // raw string rather than the enum itself.
+    pendingShareSource: String? = null,
+    onPendingShareConsumed: () -> Unit = {},
+    // Sprint 9: Settings' configurable reminder defaults, resolved by the
+    // caller (WardenNavHost, which owns SettingsRepository) rather than
+    // this screen reading DataStore directly — keeps this composable's
+    // dependency surface to ItemRepository alone, same as before.
+    defaultReminderOffsets: List<Int> = DEFAULT_REMINDER_OFFSETS
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -172,6 +191,41 @@ fun AddEditItemScreen(
     var billingAmountText by remember(existingItem) { mutableStateOf(existingItem?.billingAmount?.toString() ?: "") }
     var autoRenew by remember(existingItem) { mutableStateOf(existingItem?.autoRenew ?: false) }
 
+    // ── Sprint 8: Configurable reminder intervals ─────────────────
+    val reminderChecked = remember { mutableStateMapOf<Int, Boolean>() }
+    var reminderOffsetsLoaded by remember { mutableStateOf(false) }
+
+    // Load existing reminder offsets for edit mode, or use defaults for add
+    LaunchedEffect(existingItem) {
+        if (!reminderOffsetsLoaded) {
+            val offsets = if (itemId != null && itemId != 0L) {
+                repository.getReminderOffsetsForItem(itemId)
+            } else {
+                // Sprint 9: Settings' configurable reminder defaults —
+                // falls back to DEFAULT_REMINDER_OFFSETS only when the
+                // caller didn't supply one (keeps every non-NavHost
+                // preview/test call site working unchanged).
+                defaultReminderOffsets
+            }
+            AVAILABLE_REMINDER_OFFSETS.forEach { offset ->
+                reminderChecked[offset] = offset in offsets
+            }
+            reminderOffsetsLoaded = true
+        }
+    }
+
+    // ── Sprint 8: Unsaved changes tracking ──────────────────────
+    // Snapshot the initial values once existingItem arrives so we can
+    // detect whether the user changed anything.
+    val initialName = remember(existingItem) { existingItem?.name ?: "" }
+    val initialVendor = remember(existingItem) { existingItem?.vendor ?: "" }
+    val initialExpiryDate = remember(existingItem) { existingItem?.expiryDate }
+    val initialCostText = remember(existingItem) { existingItem?.cost?.toString() ?: "" }
+    val initialNotes = remember(existingItem) { existingItem?.notes ?: "" }
+
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
     // ── UI state ────────────────────────────────────────────────────
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var itemTypeMenuExpanded by remember { mutableStateOf(false) }
@@ -185,6 +239,11 @@ fun AddEditItemScreen(
     }
     val attachments by attachmentsFlow.collectAsState(initial = emptyList())
     val pendingAttachments = remember { mutableStateListOf<PendingAttachment>() }
+
+    // isDirty must follow pendingAttachments declaration
+    val isDirty = name != initialName || vendor != initialVendor ||
+            expiryDate != initialExpiryDate || costText != initialCostText ||
+            notes != initialNotes || pendingAttachments.isNotEmpty()
     var pendingIdCounter by remember { mutableStateOf(-1L) }
     var viewerAttachment by remember { mutableStateOf<Attachment?>(null) }
     var isProcessingAttachment by remember { mutableStateOf(false) }
@@ -263,7 +322,7 @@ fun AddEditItemScreen(
                     modelNumber = parsed.modelNumber; filledAnything = true
                 }
                 if (filledAnything) {
-                    Toast.makeText(context, "Some fields were filled in from the scan — please check them", Toast.LENGTH_LONG).show()
+                    scope.launch { snackbarHostState.showSnackbar("Some fields were filled in from the scan — please check them") }
                 }
             }
 
@@ -314,7 +373,10 @@ fun AddEditItemScreen(
             val mt = pendingShareMimeType
                 ?.let { runCatching { AttachmentMimeType.valueOf(it) }.getOrNull() }
                 ?: AttachmentMimeType.IMAGE
-            handleNewAttachment(uriString.toUri(), mt, AttachmentSource.SHARE)
+            val source = pendingShareSource
+                ?.let { runCatching { AttachmentSource.valueOf(it) }.getOrNull() }
+                ?: AttachmentSource.SHARE
+            handleNewAttachment(uriString.toUri(), mt, source)
             onPendingShareConsumed()
         }
     }
@@ -335,6 +397,11 @@ fun AddEditItemScreen(
         if (granted) onLaunchCamera() else error = "Camera permission is needed to take a photo."
     }
 
+    // ── Sprint 8: Unsaved changes back guard ──────────────────────
+    BackHandler(enabled = isDirty) {
+        showDiscardDialog = true
+    }
+
     // ── UI ──────────────────────────────────────────────────────────
     Scaffold(
         topBar = {
@@ -345,7 +412,8 @@ fun AddEditItemScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -554,6 +622,27 @@ fun AddEditItemScreen(
                 }
             }
 
+            // ── Sprint 8: Reminder intervals ────────────────────────
+            SectionHeader("Reminders")
+            Text(
+                "Get notified before expiry",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                AVAILABLE_REMINDER_OFFSETS.forEach { days ->
+                    FilterChip(
+                        selected = reminderChecked[days] == true,
+                        onClick = { reminderChecked[days] = !(reminderChecked[days] ?: false) },
+                        label = { Text(if (days == 1) "1 day" else "$days days") }
+                    )
+                }
+            }
+
             // ── Notes ───────────────────────────────────────────────
             OutlinedTextField(
                 value = notes,
@@ -649,6 +738,7 @@ fun AddEditItemScreen(
                                 billingAmount = billingAmountText.toDoubleOrNull(),
                                 autoRenew = autoRenew,
                                 status = existingItem?.status ?: ItemStatus.ACTIVE,
+                                reminderOffsets = reminderChecked.filter { it.value }.keys.toList().sorted(),
                                 onSaved = { newId ->
                                     scope.launch {
                                         pendingAttachments.forEach { pending ->
@@ -714,6 +804,24 @@ fun AddEditItemScreen(
 
     viewerAttachment?.let { attachment ->
         AttachmentViewerDialog(attachment = attachment, onDismiss = { viewerAttachment = null })
+    }
+
+    // Sprint 8: discard unsaved changes confirmation
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard changes?") },
+            text = { Text("You have unsaved changes. Are you sure you want to go back?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onDone()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") }
+            }
+        )
     }
 }
 

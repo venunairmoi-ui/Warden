@@ -3,7 +3,7 @@
 # open this project — update freely, nothing here is pinned for a reason.
 
 [versions]
-agp = "8.13.2" # 8.9.1 is the documented minimum AGP for compileSdk 36 (Android 16) — 8.9.0 triggers a nag
+agp = "8.13.2" # bumped by Android Studio's own Upgrade Assistant on first sync (was 8.9.1, the documented minimum for compileSdk 36) — accept these IDE-driven bumps freely
 kotlin = "2.1.0"
 ksp = "2.1.0-1.0.29"
 coreKtx = "1.15.0"
@@ -15,7 +15,10 @@ room = "2.6.1"
 workManager = "2.10.0"
 cameraX = "1.4.1"
 mlkitTextRecognition = "16.0.1"
+coil = "2.7.0"
 kotlinxCoroutines = "1.9.0"
+datastorePreferences = "1.1.1"
+splashscreen = "1.0.1"
 
 [libraries]
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,7 +49,12 @@ camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "
 
 mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastorePreferences" }
+core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

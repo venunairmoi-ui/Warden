@@ -9,14 +9,26 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-         Sprint 6: opt-in auto-detect of new receipts/warranty-card screenshots.
+         Sprint 6/9: opt-in auto-detect of new receipts/warranty-card screenshots.
          Declared here because the manifest requires it, but per spec section 7
          this is requested at RUNTIME ONLY when the user explicitly enables
          Auto-detect in Settings — never at first launch, and Play Store's
          restricted-permission disclosure requirement (see spec section 7 /
          README) must be satisfied before this ships.
+
+         READ_MEDIA_IMAGES (API 33+) is the modern, scoped replacement for
+         gallery access; READ_EXTERNAL_STORAGE (maxSdkVersion 32) covers
+         API 26-32 devices, where READ_MEDIA_IMAGES doesn't exist as a
+         platform permission at all and requesting it is a no-op. See
+         autodetect/MediaPermission.kt for the matching runtime branch —
+         without this second declaration, Auto-detect would silently never
+         work on any pre-Android-13 device, a meaningful share of the
+         Indian install base this app targets.
     -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".WardenApplication"
@@ -30,7 +42,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.Warden">
+            android:theme="@style/Theme.Warden.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -1,6 +1,5 @@
 package com.venunair.warden.ui.home
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -26,10 +25,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Biotech
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.Warning
@@ -44,36 +48,53 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import coil.compose.AsyncImage
 import com.venunair.warden.BuildConfig
+import com.venunair.warden.autodetect.AutoDetectWorker
 import com.venunair.warden.data.Item
 import com.venunair.warden.data.ItemCategory
 import com.venunair.warden.data.ItemRepository
+import com.venunair.warden.data.SearchResult
 import com.venunair.warden.data.seedSampleData
 import com.venunair.warden.reminders.ReminderCheckWorker
 import com.venunair.warden.ui.common.categoryIcon
@@ -95,7 +116,8 @@ private class HomeViewModelFactory(private val repository: ItemRepository) : Vie
 fun HomeScreen(
     repository: ItemRepository,
     onAddItem: () -> Unit,
-    onOpenItem: (Long) -> Unit
+    onOpenItem: (Long) -> Unit,
+    onOpenSettings: () -> Unit = {}
 ) {
     val viewModel: HomeViewModel = viewModel(factory = HomeViewModelFactory(repository))
     val grouped by viewModel.groupedItems.collectAsState()
@@ -103,10 +125,39 @@ fun HomeScreen(
     val selectedCategories by viewModel.selectedCategories.collectAsState()
     val selectedLocation by viewModel.selectedLocation.collectAsState()
     val availableLocations by viewModel.availableLocations.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    // Track items just restored via Undo so their row skips the entry animation
+    val restoredItemIds = remember { mutableStateListOf<Long>() }
+
+    // ── State-driven archive snackbar ──────────────────────────────
+    // Keeps the snackbar lifecycle separate from the swipe callback,
+    // preventing duplicate launches when confirmValueChange fires
+    // more than once during the spring-back animation.
+    var archivedItemId by remember { mutableStateOf(0L) }
+    var archivedItemName by remember { mutableStateOf("") }
+    var archiveSeq by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(archiveSeq) {
+        if (archiveSeq == 0) return@LaunchedEffect
+        val itemId = archivedItemId
+        val result = snackbarHostState.showSnackbar(
+            message = "$archivedItemName archived",
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            restoredItemIds += itemId
+            viewModel.unarchiveItem(itemId)
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -121,11 +172,17 @@ fun HomeScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 actions = {
+                    IconButton(onClick = { viewModel.setSearchActive(true) }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Search")
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
                     if (BuildConfig.DEBUG) {
                         IconButton(onClick = {
                             scope.launch {
                                 repository.seedSampleData()
-                                Toast.makeText(context, "Added sample items", Toast.LENGTH_SHORT).show()
+                                snackbarHostState.showSnackbar("Added sample items")
                             }
                         }) {
                             Icon(Icons.Filled.Biotech, contentDescription = "Load sample data")
@@ -133,115 +190,350 @@ fun HomeScreen(
                         IconButton(onClick = {
                             WorkManager.getInstance(context)
                                 .enqueue(OneTimeWorkRequestBuilder<ReminderCheckWorker>().build())
-                            Toast.makeText(context, "Checking reminders…", Toast.LENGTH_SHORT).show()
+                            scope.launch { snackbarHostState.showSnackbar("Checking reminders…") }
                         }) {
                             Icon(Icons.Filled.NotificationsActive, contentDescription = "Check reminders now")
+                        }
+                        // Sprint 9: auto-detect's real schedule is every 6
+                        // hours (WardenApplication.AUTO_DETECT_INTERVAL_HOURS)
+                        // -- this lets a scan be tested on demand instead of
+                        // waiting. Enqueuing here doesn't check whether the
+                        // toggle/permission are actually on; AutoDetectWorker
+                        // itself no-ops safely if either is missing, so this
+                        // button is safe to tap regardless of Settings state.
+                        IconButton(onClick = {
+                            WorkManager.getInstance(context)
+                                .enqueue(OneTimeWorkRequestBuilder<AutoDetectWorker>().build())
+                            scope.launch { snackbarHostState.showSnackbar("Running auto-detect scan…") }
+                        }) {
+                            Icon(Icons.Filled.ImageSearch, contentDescription = "Run auto-detect scan now")
                         }
                     }
                 }
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onAddItem,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Add") }
-            )
+            if (!isSearching) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddItem,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Add") }
+                )
+            }
         }
     ) { padding ->
-        if (grouped.isEmpty && selectedCategories.isEmpty() && selectedLocation == null) {
-            EmptyState(modifier = Modifier.padding(padding).fillMaxSize())
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp) // clear FAB
-            ) {
-                // ── Summary cards ────────────────────────────────
-                item(key = "summary") {
-                    SummaryCards(summary = summary)
-                }
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            // ── Search bar ──────────────────────────────────────
+            if (isSearching) {
+                SearchBar(
+                    query = searchQuery,
+                    onQueryChange = viewModel::updateSearchQuery,
+                    onClose = { viewModel.setSearchActive(false) }
+                )
+            }
 
-                // ── Filter chips ─────────────────────────────────
-                item(key = "filters") {
-                    FilterBar(
-                        selectedCategories = selectedCategories,
-                        onToggleCategory = viewModel::toggleCategory,
-                        selectedLocation = selectedLocation,
-                        onSelectLocation = viewModel::selectLocation,
-                        availableLocations = availableLocations
-                    )
-                }
+            if (isSearching && searchQuery.length >= 2) {
+                // ── Search results ──────────────────────────────
+                SearchResultsList(
+                    results = searchResults,
+                    query = searchQuery,
+                    onOpenItem = onOpenItem
+                )
+            } else if (!isSearching && grouped.isEmpty && selectedCategories.isEmpty() && selectedLocation == null) {
+                EmptyState(modifier = Modifier.fillMaxSize())
+            } else if (!isSearching) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp) // clear FAB
+                ) {
+                    // ── Summary cards ────────────────────────────
+                    item(key = "summary") {
+                        SummaryCards(summary = summary)
+                    }
 
-                // ── Expiring soon ────────────────────────────────
-                if (grouped.expiringSoon.isNotEmpty()) {
-                    item(key = "header_expiring") {
-                        SectionHeader(
-                            icon = Icons.Filled.Warning,
-                            title = "Expiring soon",
-                            count = grouped.expiringSoon.size,
-                            tintColor = MaterialTheme.colorScheme.error
+                    // ── Filter chips ─────────────────────────────
+                    item(key = "filters") {
+                        FilterBar(
+                            selectedCategories = selectedCategories,
+                            onToggleCategory = viewModel::toggleCategory,
+                            selectedLocation = selectedLocation,
+                            onSelectLocation = viewModel::selectLocation,
+                            availableLocations = availableLocations
                         )
                     }
-                    itemsIndexed(
-                        grouped.expiringSoon,
-                        key = { _, item -> item.id }
-                    ) { index, item ->
-                        AnimatedItemRow(item = item, index = index, onClick = { onOpenItem(item.id) })
-                    }
-                }
 
-                // ── Renewal approaching ──────────────────────────
-                if (grouped.renewalApproaching.isNotEmpty()) {
-                    item(key = "header_renewal") {
-                        SectionHeader(
-                            icon = Icons.Filled.Autorenew,
-                            title = "Renewal approaching",
-                            count = grouped.renewalApproaching.size,
-                            tintColor = MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                    itemsIndexed(
-                        grouped.renewalApproaching,
-                        key = { _, item -> item.id }
-                    ) { index, item ->
-                        AnimatedItemRow(item = item, index = index, onClick = { onOpenItem(item.id) })
-                    }
-                }
-
-                // ── Active ───────────────────────────────────────
-                if (grouped.active.isNotEmpty()) {
-                    item(key = "header_active") {
-                        SectionHeader(
-                            icon = Icons.Filled.Shield,
-                            title = "Active",
-                            count = grouped.active.size,
-                            tintColor = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                    itemsIndexed(
-                        grouped.active,
-                        key = { _, item -> item.id }
-                    ) { index, item ->
-                        AnimatedItemRow(item = item, index = index, onClick = { onOpenItem(item.id) })
-                    }
-                }
-
-                // ── Empty filter result ──────────────────────────
-                if (grouped.isEmpty && (selectedCategories.isNotEmpty() || selectedLocation != null)) {
-                    item(key = "no_results") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "No items match the selected filters.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    // ── Expiring soon ────────────────────────────
+                    if (grouped.expiringSoon.isNotEmpty()) {
+                        item(key = "header_expiring") {
+                            SectionHeader(
+                                icon = Icons.Filled.Warning,
+                                title = "Expiring soon",
+                                count = grouped.expiringSoon.size,
+                                tintColor = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        itemsIndexed(
+                            grouped.expiringSoon,
+                            key = { _, item -> item.id }
+                        ) { index, item ->
+                            SwipeableItemRow(
+                                item = item,
+                                index = index,
+                                skipAnimation = item.id in restoredItemIds,
+                                onClick = {
+                                    restoredItemIds.remove(item.id)
+                                    onOpenItem(item.id)
+                                },
+                                onArchive = {
+                                    viewModel.archiveItem(item.id)
+                                    archivedItemId = item.id
+                                    archivedItemName = item.name
+                                    archiveSeq++
+                                }
                             )
                         }
                     }
+
+                    // ── Renewal approaching ──────────────────────
+                    if (grouped.renewalApproaching.isNotEmpty()) {
+                        item(key = "header_renewal") {
+                            SectionHeader(
+                                icon = Icons.Filled.Autorenew,
+                                title = "Renewal approaching",
+                                count = grouped.renewalApproaching.size,
+                                tintColor = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                        itemsIndexed(
+                            grouped.renewalApproaching,
+                            key = { _, item -> item.id }
+                        ) { index, item ->
+                            SwipeableItemRow(
+                                item = item,
+                                index = index,
+                                skipAnimation = item.id in restoredItemIds,
+                                onClick = {
+                                    restoredItemIds.remove(item.id)
+                                    onOpenItem(item.id)
+                                },
+                                onArchive = {
+                                    viewModel.archiveItem(item.id)
+                                    archivedItemId = item.id
+                                    archivedItemName = item.name
+                                    archiveSeq++
+                                }
+                            )
+                        }
+                    }
+
+                    // ── Active ───────────────────────────────────
+                    if (grouped.active.isNotEmpty()) {
+                        item(key = "header_active") {
+                            SectionHeader(
+                                icon = Icons.Filled.Shield,
+                                title = "Active",
+                                count = grouped.active.size,
+                                tintColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        itemsIndexed(
+                            grouped.active,
+                            key = { _, item -> item.id }
+                        ) { index, item ->
+                            SwipeableItemRow(
+                                item = item,
+                                index = index,
+                                skipAnimation = item.id in restoredItemIds,
+                                onClick = {
+                                    restoredItemIds.remove(item.id)
+                                    onOpenItem(item.id)
+                                },
+                                onArchive = {
+                                    viewModel.archiveItem(item.id)
+                                    archivedItemId = item.id
+                                    archivedItemName = item.name
+                                    archiveSeq++
+                                }
+                            )
+                        }
+                    }
+
+                    // ── Empty filter result ──────────────────────
+                    if (grouped.isEmpty && (selectedCategories.isNotEmpty() || selectedLocation != null)) {
+                        item(key = "no_results") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No items match the selected filters.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (isSearching) {
+                // Searching but query < 2 chars
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Type at least 2 characters to search",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+        }
+    }
+}
+
+// ── Search bar ─────────────────────────────────────────────────────
+
+@Composable
+private fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = { Text("Search items, vendors, receipts…") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = {
+                if (query.isNotEmpty()) onQueryChange("") else onClose()
+            }) {
+                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+            }
+        },
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    )
+}
+
+// ── Search results list ────────────────────────────────────────────
+
+@Composable
+private fun SearchResultsList(
+    results: List<SearchResult>,
+    query: String,
+    onOpenItem: (Long) -> Unit
+) {
+    if (results.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "No results for \"$query\"",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            itemsIndexed(results, key = { _, r -> r.item.id }) { _, result ->
+                SearchResultRow(
+                    result = result,
+                    onClick = { onOpenItem(result.item.id) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val item = result.item
+    val daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), item.expiryDate)
+    val urgency = urgencyOf(item.expiryDate)
+    val urgencyTint = urgency.color()
+
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Show attachment thumbnail for OCR matches, category icon otherwise
+            if (result.attachmentThumbnail != null) {
+                AsyncImage(
+                    model = result.attachmentThumbnail,
+                    contentDescription = "Attachment",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        categoryIcon(item.category),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            ) {
+                Text(item.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    item.vendor ?: item.category.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                // Show OCR snippet for OCR matches
+                result.ocrSnippet?.let { snippet ->
+                    Text(
+                        snippet,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = when {
+                    daysLeft < 0 -> "Expired"
+                    daysLeft == 0L -> "Due today"
+                    else -> "$daysLeft d left"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = urgencyTint
+            )
         }
     }
 }
@@ -455,14 +747,23 @@ private fun SectionHeader(
     }
 }
 
-// ── Animated item row ───────────────────────────────────────────────
+// ── Swipeable animated item row ─────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AnimatedItemRow(item: Item, index: Int, onClick: () -> Unit) {
-    var visible by remember { mutableStateOf(false) }
+private fun SwipeableItemRow(
+    item: Item,
+    index: Int,
+    skipAnimation: Boolean = false,
+    onClick: () -> Unit,
+    onArchive: () -> Unit
+) {
+    var visible by remember { mutableStateOf(skipAnimation) }
     LaunchedEffect(item.id) {
-        delay(index.coerceAtMost(10) * 50L)
-        visible = true
+        if (!visible) {
+            delay(index.coerceAtMost(10) * 50L)
+            visible = true
+        }
     }
     AnimatedVisibility(
         visible = visible,
@@ -471,11 +772,60 @@ private fun AnimatedItemRow(item: Item, index: Int, onClick: () -> Unit) {
             animationSpec = tween(300)
         )
     ) {
-        ItemRow(
-            item = item,
-            onClick = onClick,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        // Guard: prevent duplicate onArchive calls if the spring-back
+        // animation oscillates across the swipe threshold.
+        var swiped by remember { mutableStateOf(false) }
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { dismissValue ->
+                if (dismissValue == SwipeToDismissBoxValue.StartToEnd && !swiped) {
+                    swiped = true
+                    onArchive()
+                }
+                // Always return false so the state resets to Settled.
+                // The item disappears from the list instantly (Flow filters
+                // out ARCHIVED), and when Undo restores it, the fresh
+                // composable starts at Settled instead of inheriting the
+                // saved StartToEnd value from rememberSaveable.
+                false
+            }
         )
+        SwipeToDismissBox(
+            state = dismissState,
+            backgroundContent = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .background(
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(start = 20.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Archive,
+                            contentDescription = "Archive",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Archive",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            },
+            enableDismissFromEndToStart = false
+        ) {
+            ItemRow(
+                item = item,
+                onClick = onClick,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
     }
 }
 

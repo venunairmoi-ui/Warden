@@ -6,4 +6,19 @@
          takes over the instant setContent{} runs in MainActivity.
     -->
     <style name="Theme.Warden" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+         Sprint 9: branded splash screen (androidx.core.splashscreen,
+         backported to API 26 — this app's minSdk — even though the
+         platform SplashScreen API itself is API 31+). This is the
+         Activity's launch theme (see AndroidManifest.xml); MainActivity
+         switches to Theme.Warden itself via postSplashScreenTheme the
+         moment installSplashScreen() hands off, so this theme is only ever
+         on screen for the ~200ms hold in MainActivity.onCreate.
+    -->
+    <style name="Theme.Warden.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/warden_primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Warden</item>
+    </style>
 </resources>

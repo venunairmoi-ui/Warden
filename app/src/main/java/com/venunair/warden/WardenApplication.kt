@@ -1,10 +1,24 @@
 package com.venunair.warden
 
 import android.app.Application
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.venunair.warden.autodetect.AutoDetectWorker
+import com.venunair.warden.data.DigestFrequency
 import com.venunair.warden.data.ItemRepository
+import com.venunair.warden.data.SettingsRepository
 import com.venunair.warden.data.WardenDatabase
+import com.venunair.warden.reminders.DigestNotificationWorker
 import com.venunair.warden.reminders.NotificationHelper
 import com.venunair.warden.reminders.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 /**
  * Deliberately not using Hilt/Dagger — a single Application-level manual DI
@@ -23,6 +37,16 @@ class WardenApplication : Application() {
         )
     }
 
+    // Sprint 9: settings persistence (DataStore-backed).
+    val settingsRepository: SettingsRepository by lazy { SettingsRepository(this) }
+
+    // Application has no built-in coroutine scope the way a ViewModel or a
+    // lifecycle-aware component does. SupervisorJob so one collector
+    // failing (shouldn't happen — DataStore's Flow doesn't throw for a
+    // missing/default value) can't cancel the whole scope; this lives for
+    // the entire process, same as `database`/`repository` above.
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
         // Both are safe/cheap to call on every process start: creating an
@@ -31,5 +55,92 @@ class WardenApplication : Application() {
         // already-registered periodic job's timing.
         NotificationHelper.ensureChannel(this)
         ReminderScheduler.schedule(this)
+        observeSettingsAndReschedule()
+    }
+
+    /**
+     * Sprint 9: digest frequency and the auto-detect toggle are both
+     * user-configurable in Settings — this collector is the one place that
+     * reacts to either changing and updates WorkManager's schedule to
+     * match, for as long as the process lives. distinctUntilChanged on
+     * each derived value (not the whole UserPreferences object) so an
+     * unrelated setting change (e.g. reminder defaults) doesn't
+     * re-enqueue work that hasn't actually changed.
+     */
+    private fun observeSettingsAndReschedule() {
+        applicationScope.launch {
+            settingsRepository.preferences
+                .map { it.digestFrequency }
+                .distinctUntilChanged()
+                .collect { frequency -> applyDigestSchedule(frequency) }
+        }
+        applicationScope.launch {
+            settingsRepository.preferences
+                .map { it.autoDetectEnabled }
+                .distinctUntilChanged()
+                .collect { enabled -> applyAutoDetectSchedule(enabled) }
+        }
+    }
+
+    /**
+     * Sprint 8 originally scheduled this unconditionally, weekly, with
+     * KEEP. Sprint 9 makes it settings-driven: OFF cancels the periodic
+     * work entirely, WEEKLY/MONTHLY (re)enqueues with REPLACE so an actual
+     * frequency change takes effect immediately rather than waiting for
+     * the previous interval to lapse.
+     */
+    private fun applyDigestSchedule(frequency: DigestFrequency) {
+        val workManager = WorkManager.getInstance(this)
+        if (frequency == DigestFrequency.OFF) {
+            workManager.cancelUniqueWork(DIGEST_WORK_NAME)
+            return
+        }
+        val intervalDays = when (frequency) {
+            DigestFrequency.WEEKLY -> 7L
+            DigestFrequency.MONTHLY -> 30L
+            DigestFrequency.OFF -> return // unreachable, handled above
+        }
+        val digestWork = PeriodicWorkRequestBuilder<DigestNotificationWorker>(
+            intervalDays, TimeUnit.DAYS
+        ).build()
+        workManager.enqueueUniquePeriodicWork(
+            DIGEST_WORK_NAME,
+            ExistingPeriodicWorkPolicy.REPLACE,
+            digestWork
+        )
+    }
+
+    /**
+     * Auto-detect is opt-in and off by default (Settings toggle) — this
+     * only ever enqueues the periodic scan once the user turns it on, and
+     * cancels it the moment they turn it off. Runtime READ_MEDIA_IMAGES
+     * permission is requested from the Settings screen itself, before the
+     * toggle can be flipped on; AutoDetectWorker also no-ops defensively
+     * if that permission is somehow missing when it runs.
+     */
+    private fun applyAutoDetectSchedule(enabled: Boolean) {
+        val workManager = WorkManager.getInstance(this)
+        if (!enabled) {
+            workManager.cancelUniqueWork(AUTO_DETECT_WORK_NAME)
+            return
+        }
+        val autoDetectWork = PeriodicWorkRequestBuilder<AutoDetectWorker>(
+            AUTO_DETECT_INTERVAL_HOURS, TimeUnit.HOURS
+        ).build()
+        workManager.enqueueUniquePeriodicWork(
+            AUTO_DETECT_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            autoDetectWork
+        )
+    }
+
+    companion object {
+        private const val DIGEST_WORK_NAME = "warden_digest"
+        private const val AUTO_DETECT_WORK_NAME = "warden_auto_detect"
+        // Battery-friendly cadence for an opt-in "quietly notice new
+        // photos" scan — not time-critical the way expiry reminders are.
+        // WorkManager's own minimum periodic interval is 15 minutes; 6
+        // hours is a deliberate choice, not a platform constraint.
+        private const val AUTO_DETECT_INTERVAL_HOURS = 6L
     }
 }

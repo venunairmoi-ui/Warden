@@ -7,19 +7,25 @@ import com.venunair.warden.data.Item
 import com.venunair.warden.data.ItemCategory
 import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.ItemType
+import com.venunair.warden.data.SearchResult
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /**
  * Sprint 7: groups items by urgency, computes summary metrics, and
  * exposes filter state for category and location chips.
+ * Sprint 8: adds search state and archive/unarchive.
  */
-class HomeViewModel(repository: ItemRepository) : ViewModel() {
+class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
 
     private val allItems: StateFlow<List<Item>> = repository.observeActiveItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -40,6 +46,55 @@ class HomeViewModel(repository: ItemRepository) : ViewModel() {
 
     fun selectLocation(location: String?) {
         _selectedLocation.value = location
+    }
+
+    // ── Sprint 8: Search state ──────────────────────────────────────
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    val searchResults: StateFlow<List<SearchResult>> = _searchResults
+
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun setSearchActive(active: Boolean) {
+        _isSearching.value = active
+        if (!active) {
+            _searchQuery.value = ""
+            _searchResults.value = emptyList()
+        }
+    }
+
+    init {
+        @OptIn(FlowPreview::class)
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(300)
+                .distinctUntilChanged()
+                .collect { query ->
+                    _searchResults.value = if (query.length >= 2) {
+                        repository.searchItems(query)
+                    } else {
+                        emptyList()
+                    }
+                }
+        }
+    }
+
+    // ── Sprint 8: Archive/Unarchive ─────────────────────────────────
+
+    fun archiveItem(itemId: Long) {
+        viewModelScope.launch { repository.archiveItem(itemId) }
+    }
+
+    fun unarchiveItem(itemId: Long) {
+        viewModelScope.launch { repository.unarchiveItem(itemId) }
     }
 
     // ── Derived state ───────────────────────────────────────────────

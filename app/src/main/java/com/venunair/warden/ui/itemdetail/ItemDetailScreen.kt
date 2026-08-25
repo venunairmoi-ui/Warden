@@ -23,10 +23,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Payments
@@ -47,13 +53,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -100,6 +110,8 @@ fun ItemDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showClaimInfo by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
         topBar = {
@@ -117,6 +129,9 @@ fun ItemDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showClaimInfo = true }, enabled = item != null) {
+                        Icon(Icons.Default.Info, contentDescription = "Claim info")
+                    }
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                     }
@@ -125,7 +140,8 @@ fun ItemDetailScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         item?.let { current ->
             ItemDetailContent(
@@ -134,6 +150,17 @@ fun ItemDetailScreen(
                 modifier = Modifier.padding(padding)
             )
         } ?: ShimmerLoading(modifier = Modifier.padding(padding))
+    }
+
+    // Sprint 8: Claim info bottom sheet
+    if (showClaimInfo) {
+        item?.let { current ->
+            ClaimInfoBottomSheet(
+                item = current,
+                snackbarHostState = snackbarHostState,
+                onDismiss = { showClaimInfo = false }
+            )
+        }
     }
 
     if (showDeleteConfirm) {
@@ -557,6 +584,105 @@ private fun ShimmerLoading(modifier: Modifier = Modifier) {
                 .background(shimmerBrush, RoundedCornerShape(20.dp))
         )
     }
+}
+
+// ── Sprint 8: Claim info bottom sheet ───────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClaimInfoBottomSheet(
+    item: Item,
+    snackbarHostState: SnackbarHostState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState()
+
+    val claimText = buildClaimInfoText(item)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Claim information",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(4.dp))
+
+            // Summary card
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Text(
+                    text = claimText,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Claim Info", claimText))
+                        scope.launch { snackbarHostState.showSnackbar("Copied to clipboard") }
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Copy")
+                }
+                Button(
+                    onClick = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "${item.name} — Claim Info")
+                            putExtra(Intent.EXTRA_TEXT, claimText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share claim info"))
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Share")
+                }
+            }
+        }
+    }
+}
+
+private fun buildClaimInfoText(item: Item): String = buildString {
+    appendLine("Product: ${item.name}")
+    item.vendor?.let { appendLine("Brand / Vendor: $it") }
+    item.category.let { appendLine("Type: ${it.displayName}") }
+    appendLine("Expiry / Due: ${item.expiryDate.toIndianDateString()}")
+    item.purchaseDate?.let { appendLine("Purchased: ${it.toIndianDateString()}") }
+    item.amcNumber?.let { appendLine("AMC / Policy No: $it") }
+    item.serialNumber?.let { appendLine("Serial No: $it") }
+    item.modelNumber?.let { appendLine("Model No: $it") }
+    item.retailer?.let { appendLine("Retailer: $it") }
+    item.invoiceNumber?.let { appendLine("Invoice No: $it") }
+    item.cost?.let { appendLine("Cost: ${it.toIndianCurrencyString()}") }
+    item.location?.let { appendLine("Location: $it") }
+    item.notes?.let { appendLine("Notes: $it") }
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────

@@ -56,6 +56,8 @@ class AddEditItemViewModel(
         // just by editing and saving it. Found alongside the reminder-rules
         // cascade-delete bug while auditing this same save path.
         status: ItemStatus = ItemStatus.ACTIVE,
+        // Sprint 8: user-selected reminder intervals
+        reminderOffsets: List<Int> = emptyList(),
         onSaved: (Long) -> Unit
     ) {
         viewModelScope.launch {
@@ -84,7 +86,13 @@ class AddEditItemViewModel(
                 // reads createdAt yet — but revisit if you add "sort by date
                 // added" later; thread the original value through instead.
             )
-            val savedId = repository.saveItem(item)
+            val savedId = repository.saveItem(item, reminderOffsets)
+            // Sprint 8: if editing, also replace existing rules with the
+            // user-selected offsets (saveItem only seeds defaults on insert
+            // or resets fired state on update — it doesn't replace the set).
+            if (id != 0L && reminderOffsets.isNotEmpty()) {
+                repository.replaceReminderRules(savedId, reminderOffsets)
+            }
             onSaved(savedId)
         }
     }

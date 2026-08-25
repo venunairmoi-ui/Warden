@@ -23,8 +23,8 @@ android {
         // rebuild with the latest code" impossible to self-check. Check
         // Settings > Apps > Warden > App details (or long-press the icon >
         // App info) to see versionName on-device before re-testing a fix.
-        versionCode = 12
-        versionName = "0.6.0-sprint7"
+        versionCode = 14
+        versionName = "0.8.0-sprint9"
 
         vectorDrawables { useSupportLibrary = true }
     }
@@ -101,6 +101,16 @@ dependencies {
 
     // Sprint 4: on-device OCR (image + rendered PDF pages)
     implementation(libs.mlkit.text.recognition)
+
+    // Sprint 8: thumbnail display in search results
+    implementation(libs.coil.compose)
+
+    // Sprint 9: settings persistence (reminder defaults, digest frequency,
+    // auto-detect toggle, theme mode, onboarding-completed flag)
+    implementation(libs.datastore.preferences)
+
+    // Sprint 9: branded splash screen (SplashScreen API, backported to API 26)
+    implementation(libs.core.splashscreen)
 
     implementation(libs.kotlinx.coroutines.android)
 }

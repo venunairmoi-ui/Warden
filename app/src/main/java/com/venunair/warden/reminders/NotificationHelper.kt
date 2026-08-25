@@ -23,11 +23,19 @@ object NotificationHelper {
     // below requires a fresh channel ID to actually take effect for anyone
     // who already ran an earlier build, this device included.
     const val CHANNEL_ID = "warranty_reminders_v2"
+    const val DIGEST_CHANNEL_ID = "weekly_digest"
+    const val AUTO_DETECT_CHANNEL_ID = "auto_detect_receipts"
     const val ACTION_MARK_SERVICED = "com.venunair.warden.action.MARK_SERVICED"
     const val ACTION_SNOOZE = "com.venunair.warden.action.SNOOZE"
     const val EXTRA_ITEM_ID = "extra_item_id"
     const val EXTRA_RULE_ID = "extra_rule_id"
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+    const val DIGEST_NOTIFICATION_ID = 99999
+    // Auto-detect notification IDs are derived per-image (see
+    // AutoDetectWorker) but all fall in this offset range, well clear of
+    // both real item IDs (used as reminder notification IDs) and
+    // DIGEST_NOTIFICATION_ID, so none of the three can ever collide.
+    const val AUTO_DETECT_NOTIFICATION_ID_BASE = 900_000_000
 
     /**
      * minSdk is already 26 (O), the same level NotificationChannel was
@@ -41,18 +49,49 @@ object NotificationHelper {
      * setSound() call needed.
      */
     fun ensureChannel(context: Context) {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Warranty & AMC reminders",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Alerts when a tracked warranty, AMC, or subscription is due soon."
-        }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                "Warranty & AMC reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when a tracked warranty, AMC, or subscription is due soon."
+            }
+        )
+        // Sprint 8: weekly digest — default importance so it doesn't
+        // heads-up every Monday, just sits in the shade.
+        nm.createNotificationChannel(
+            NotificationChannel(
+                DIGEST_CHANNEL_ID,
+                "Weekly digest",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "A weekly summary of upcoming expirations and renewals."
+            }
+        )
+        // Sprint 9: auto-detect suggestions — LOW, not DEFAULT/HIGH. This is
+        // a "we noticed something, want to add it?" suggestion the user
+        // opted into, not a time-sensitive alert; it should sit quietly in
+        // the shade with no heads-up popup or sound.
+        nm.createNotificationChannel(
+            NotificationChannel(
+                AUTO_DETECT_CHANNEL_ID,
+                "Receipt suggestions",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Suggests adding a photo that looks like a receipt or warranty card."
+            }
+        )
     }
 
-    /** Returns whether a notification was actually posted — see the caller in ReminderCheckWorker for why that matters. */
-    fun showReminder(context: Context, item: Item, rule: ReminderRule, daysLeft: Long): Boolean {
+    /**
+     * Returns whether a notification was actually posted — see the caller
+     * in ReminderCheckWorker for why that matters.
+     * Sprint 8: [smartSuffix] appends intelligent context (e.g. repair
+     * cost warning) to the notification body.
+     */
+    fun showReminder(context: Context, item: Item, rule: ReminderRule, daysLeft: Long, smartSuffix: String? = null): Boolean {
         // POST_NOTIFICATIONS (API 33+) may have been denied — notify() would
         // otherwise silently no-op (or trip a lint @RequiresPermission
         // check); bail explicitly so this reads as an intentional guard.
@@ -68,11 +107,12 @@ object NotificationHelper {
         // Acceptable trade-off for v1; revisit if that turns out to matter.
         val notificationId = item.id.toInt()
 
-        val body = when {
+        val timeText = when {
             daysLeft < 0 -> "Overdue by ${-daysLeft} day${if (-daysLeft == 1L) "" else "s"}"
             daysLeft == 0L -> "Due today"
             else -> "Due in $daysLeft day${if (daysLeft == 1L) "" else "s"}"
         }
+        val body = if (smartSuffix != null) "$timeText\n$smartSuffix" else timeText
 
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -116,6 +156,95 @@ object NotificationHelper {
             // visible button text.
             .addAction(0, "Serviced", actionPendingIntent(context, ACTION_MARK_SERVICED, item.id, rule.id, notificationId))
             .addAction(0, "Snooze 7d", actionPendingIntent(context, ACTION_SNOOZE, item.id, rule.id, notificationId))
+            .build()
+
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        return true
+    }
+
+    /**
+     * Sprint 8: Weekly digest notification — a single summary of items
+     * expiring within the next 30 days and active subscriptions.
+     */
+    fun showDigest(context: Context, expiringCount: Int, subscriptionCount: Int, totalAtRisk: String): Boolean {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return false
+
+        if (expiringCount == 0 && subscriptionCount == 0) return false
+
+        val title = "Weekly summary"
+        val lines = mutableListOf<String>()
+        if (expiringCount > 0) {
+            lines.add("$expiringCount item${if (expiringCount != 1) "s" else ""} expiring soon ($totalAtRisk at risk)")
+        }
+        if (subscriptionCount > 0) {
+            lines.add("$subscriptionCount active subscription${if (subscriptionCount != 1) "s" else ""}")
+        }
+        val body = lines.joinToString("\n")
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            DIGEST_NOTIFICATION_ID,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, DIGEST_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(lines.first())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setColor(0xFF2E5E4E.toInt())
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(DIGEST_NOTIFICATION_ID, notification)
+        return true
+    }
+
+    /**
+     * Sprint 9: auto-detect — "this photo looks like a receipt/warranty
+     * card, want to add it?" Tapping opens MainActivity via the same
+     * EXTRA_SHARE_* hand-off ShareReceiverActivity already uses (see
+     * MainActivity.updatePendingShare / WardenNavHost's PendingShare), with
+     * source = "AUTO_DETECT" so AddEditItemScreen records the attachment's
+     * provenance correctly (AttachmentSource.AUTO_DETECT) instead of
+     * SHARE. [notificationId] is derived per-image by the caller — see
+     * AUTO_DETECT_NOTIFICATION_ID_BASE — so multiple detections stack
+     * instead of one replacing another.
+     */
+    fun showAutoDetectSuggestion(context: Context, imageUri: String, notificationId: Int): Boolean {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return false
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                putExtra(MainActivity.EXTRA_SHARE_URI, imageUri)
+                putExtra(MainActivity.EXTRA_SHARE_MIME_TYPE, "IMAGE")
+                putExtra(MainActivity.EXTRA_SHARE_SOURCE, "AUTO_DETECT")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, AUTO_DETECT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Looks like a receipt")
+            .setContentText("Add it to Warden?")
+            .setColor(0xFF2E5E4E.toInt())
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)

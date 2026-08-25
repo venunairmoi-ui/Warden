@@ -35,3 +35,11 @@ data class ReminderRule(
 
 /** Default reminder offsets applied to a new item — spec section 4. */
 val DEFAULT_REMINDER_OFFSETS = listOf(30, 7, 1)
+
+/**
+ * Every interval a user can pick from, on both the Add/Edit form (Sprint 8)
+ * and the Settings screen's "Reminder defaults" section (Sprint 9). One
+ * shared list so the two screens can't silently drift apart — each used to
+ * define its own private copy of the same six numbers.
+ */
+val AVAILABLE_REMINDER_OFFSETS = listOf(90, 60, 30, 14, 7, 1)

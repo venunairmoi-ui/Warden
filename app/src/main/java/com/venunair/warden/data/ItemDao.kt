@@ -39,4 +39,16 @@ interface ItemDao {
 
     @Query("UPDATE items SET expiryDate = :newExpiry WHERE id = :id")
     suspend fun updateExpiry(id: Long, newExpiry: LocalDate)
+
+    // Sprint 8: full-text search across name and vendor
+    @Query(
+        """SELECT * FROM items
+           WHERE status != 'ARCHIVED'
+             AND (name LIKE '%' || :query || '%' OR vendor LIKE '%' || :query || '%')
+           ORDER BY expiryDate ASC"""
+    )
+    suspend fun searchByNameOrVendor(query: String): List<Item>
+
+    @Query("SELECT * FROM items WHERE id IN (:ids) AND status != 'ARCHIVED'")
+    suspend fun getByIds(ids: List<Long>): List<Item>
 }

@@ -12,4 +12,8 @@ interface ServiceEventDao {
 
     @Insert
     suspend fun insert(event: ServiceEvent): Long
+
+    /** Sprint 8: total repair/service cost for an item — used by smart notifications. */
+    @Query("SELECT COALESCE(SUM(cost), 0.0) FROM service_events WHERE itemId = :itemId")
+    suspend fun getTotalCostForItem(itemId: Long): Double
 }

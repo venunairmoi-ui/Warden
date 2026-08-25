@@ -42,4 +42,8 @@ interface ReminderRuleDao {
      */
     @Query("UPDATE reminder_rules SET lastFiredDate = NULL, snoozedUntil = NULL WHERE itemId = :itemId")
     suspend fun resetForItem(itemId: Long): Int
+
+    /** Sprint 8: one-shot read of reminder offsets for the edit form. */
+    @Query("SELECT * FROM reminder_rules WHERE itemId = :itemId")
+    suspend fun getForItem(itemId: Long): List<ReminderRule>
 }

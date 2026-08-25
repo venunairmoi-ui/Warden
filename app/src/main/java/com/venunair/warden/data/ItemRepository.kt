@@ -89,6 +89,9 @@ class ItemRepository(
 
     suspend fun archiveItem(id: Long) = itemDao.setStatus(id, ItemStatus.ARCHIVED)
 
+    /** Sprint 8: undo for swipe-to-archive. */
+    suspend fun unarchiveItem(id: Long) = itemDao.setStatus(id, ItemStatus.ACTIVE)
+
     /** Called from the "Mark serviced/renewed" notification action and the Detail screen button. */
     suspend fun markServiced(itemId: Long, newExpiry: LocalDate, note: String? = null) {
         serviceEventDao.insert(ServiceEvent(itemId = itemId, date = LocalDate.now(), note = note))
@@ -140,4 +143,75 @@ class ItemRepository(
             reminderRuleDao.update(rule.copy(lastFiredDate = null, snoozedUntil = until))
         }
     }
+
+    // ── Sprint 8: Search ────────────────────────────────────────────
+
+    /** Combined search across item name/vendor and attachment OCR text. */
+    suspend fun searchItems(query: String): List<SearchResult> {
+        if (query.isBlank()) return emptyList()
+        val trimmed = query.trim()
+
+        // 1. Items matching by name or vendor
+        val nameMatches = itemDao.searchByNameOrVendor(trimmed)
+        val nameMatchIds = nameMatches.map { it.id }.toSet()
+
+        // 2. Items matching by OCR text in their attachments
+        val ocrItemIds = attachmentDao.searchItemIdsByOcrText(trimmed)
+        val ocrOnlyIds = ocrItemIds.filter { it !in nameMatchIds }
+        val ocrItems = if (ocrOnlyIds.isNotEmpty()) itemDao.getByIds(ocrOnlyIds) else emptyList()
+
+        // Build results — name/vendor matches first, then OCR-only matches
+        val results = mutableListOf<SearchResult>()
+        for (item in nameMatches) {
+            val hasOcr = item.id in ocrItemIds
+            val ocrSnippet = if (hasOcr) attachmentDao.getOcrSnippetForItem(item.id, trimmed) else null
+            val thumbnail = if (hasOcr) attachmentDao.getFirstThumbnailForItem(item.id) else null
+            results.add(SearchResult(item, MatchType.NAME_OR_VENDOR, ocrSnippet?.extractSnippet(trimmed), thumbnail))
+        }
+        for (item in ocrItems) {
+            val ocrSnippet = attachmentDao.getOcrSnippetForItem(item.id, trimmed)
+            val thumbnail = attachmentDao.getFirstThumbnailForItem(item.id)
+            results.add(SearchResult(item, MatchType.OCR_TEXT, ocrSnippet?.extractSnippet(trimmed), thumbnail))
+        }
+        return results
+    }
+
+    /** Sprint 8: get reminder offsets for the edit form. */
+    suspend fun getReminderOffsetsForItem(itemId: Long): List<Int> =
+        reminderRuleDao.getForItem(itemId).map { it.daysBeforeExpiry }
+
+    /** Sprint 8: replace all reminder rules for an item with new offsets. */
+    suspend fun replaceReminderRules(itemId: Long, offsets: List<Int>) {
+        reminderRuleDao.deleteForItem(itemId)
+        if (offsets.isNotEmpty()) {
+            reminderRuleDao.insertAll(offsets.map { ReminderRule(itemId = itemId, daysBeforeExpiry = it) })
+        }
+    }
+
+    /** Sprint 8: total repair/service cost for an item (used by smart notifications). */
+    suspend fun getServiceCostForItem(itemId: Long): Double =
+        serviceEventDao.getTotalCostForItem(itemId)
+}
+
+// ── Sprint 8: Search result types ──────────────────────────────────
+
+enum class MatchType { NAME_OR_VENDOR, OCR_TEXT }
+
+data class SearchResult(
+    val item: Item,
+    val matchType: MatchType,
+    val ocrSnippet: String? = null,
+    val attachmentThumbnail: String? = null
+)
+
+/** Extract a ~80-char window around the first occurrence of [query] in this text. */
+private fun String.extractSnippet(query: String, windowSize: Int = 80): String {
+    val lowerThis = this.lowercase()
+    val lowerQuery = query.lowercase()
+    val idx = lowerThis.indexOf(lowerQuery)
+    if (idx < 0) return this.take(windowSize)
+    val start = (idx - windowSize / 2).coerceAtLeast(0)
+    val end = (idx + query.length + windowSize / 2).coerceAtMost(this.length)
+    val snippet = this.substring(start, end).replace('\n', ' ')
+    return (if (start > 0) "…" else "") + snippet + (if (end < this.length) "…" else "")
 }
