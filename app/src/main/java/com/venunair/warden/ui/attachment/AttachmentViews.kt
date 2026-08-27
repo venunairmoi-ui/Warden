@@ -56,10 +56,15 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.venunair.warden.data.Attachment
 import com.venunair.warden.data.AttachmentMimeType
+import com.venunair.warden.ocr.ParsedReceiptFields
+import com.venunair.warden.ocr.parseReceiptFields
 import com.venunair.warden.pdf.PdfPageRenderer
 import com.venunair.warden.ui.common.rememberLocalThumbnail
+import com.venunair.warden.ui.common.toIndianCurrencyString
+import com.venunair.warden.ui.common.toIndianDateString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
  * One attachment as a square thumbnail: the image itself for an IMAGE
@@ -183,12 +188,56 @@ fun AttachmentThumbnailRow(
  * parser's keyword rules didn't anchor to) far better than staring at the
  * wrong pre-filled field alone would -- and the Copy button makes it easy
  * to hand that exact text along when reporting a bad guess.
+ *
+ * Feedback, 2026-08-25: re-running parseReceiptFields here and showing its
+ * result as a labelled "Detected from scan" block -- previously the ONLY
+ * place a user could see what OCR extracted was the attach-time auto-fill
+ * (AddEditItemScreen.handleNewAttachment), which is silent and blank-
+ * fields-only, so a user reopening an attachment later (or one whose
+ * fields were already filled) had no way to see, correct or (re)apply
+ * what was actually detected. This block is the "verify" step -- values
+ * sit right above the raw scanned text below so a wrong guess is obvious
+ * -- and each detected field gets its own "Apply" action, wired via the
+ * five optional callbacks below. Deliberately per-field rather than one
+ * bulk button: applying is an explicit overwrite (unlike the attach-time
+ * auto-fill, which only ever touches blank fields), so letting the user
+ * pick which fields to trust avoids clobbering a field that's already
+ * correct with a bad OCR guess for just one other field. "Edit" is the
+ * existing, un-duplicated form field itself -- Apply fills it, the user
+ * edits it there with the full existing UI (including the date picker
+ * already on the form) rather than a second editor living in this dialog.
+ * All five callbacks default to null: AddEditItemScreen's call site wires
+ * them, ItemDetailScreen's (view-only, no form to apply into) leaves them
+ * unset and the block still shows the detected values with no Apply
+ * buttons -- satisfying "so users know what to do" for a screen that has
+ * nothing else for them to do here besides open Edit.
  */
 @Composable
-fun AttachmentViewerDialog(attachment: Attachment, onDismiss: () -> Unit) {
+fun AttachmentViewerDialog(
+    attachment: Attachment,
+    onDismiss: () -> Unit,
+    onApplyVendor: ((String) -> Unit)? = null,
+    onApplyPurchaseDate: ((LocalDate) -> Unit)? = null,
+    onApplyCost: ((Double) -> Unit)? = null,
+    onApplySerialNumber: ((String) -> Unit)? = null,
+    onApplyModelNumber: ((String) -> Unit)? = null,
+    // Feedback, 2026-08-26: retailer/invoiceNumber/referenceNumber added to
+    // ParsedReceiptFields alongside the OCR improvements described there --
+    // same optional-callback pattern as the five above (null on
+    // ItemDetailScreen's view-only call site).
+    onApplyRetailer: ((String) -> Unit)? = null,
+    onApplyInvoiceNumber: ((String) -> Unit)? = null,
+    onApplyReferenceNumber: ((String) -> Unit)? = null
+) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var showRawOcrText by remember { mutableStateOf(false) }
+    val parsed: ParsedReceiptFields? = remember(attachment.rawOcrText) {
+        attachment.rawOcrText?.takeIf { it.isNotBlank() }?.let(::parseReceiptFields)
+    }
+    val canApplyAnything = onApplyVendor != null || onApplyPurchaseDate != null ||
+        onApplyCost != null || onApplySerialNumber != null || onApplyModelNumber != null ||
+        onApplyRetailer != null || onApplyInvoiceNumber != null || onApplyReferenceNumber != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -236,6 +285,129 @@ fun AttachmentViewerDialog(attachment: Attachment, onDismiss: () -> Unit) {
                     }
                 }
 
+                parsed?.takeIf {
+                    it.vendor != null || it.purchaseDate != null || it.cost != null ||
+                        it.serialNumber != null || it.modelNumber != null ||
+                        it.retailer != null || it.invoiceNumber != null || it.referenceNumber != null
+                }?.let { fields ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Detected from scan", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            if (canApplyAnything) {
+                                "Compare these with the photo above, then tap Apply to fill in the item's fields — you can still edit them afterwards."
+                            } else {
+                                "Picked up from the scan. Open Edit on this item to add them to its details."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        fields.vendor?.let { value ->
+                            DetectedFieldRow(
+                                label = "Vendor",
+                                value = value,
+                                onApply = onApplyVendor?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Vendor applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.purchaseDate?.let { value ->
+                            DetectedFieldRow(
+                                label = "Purchase date",
+                                value = value.toIndianDateString(),
+                                onApply = onApplyPurchaseDate?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Purchase date applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.cost?.let { value ->
+                            DetectedFieldRow(
+                                label = "Cost",
+                                value = value.toIndianCurrencyString(),
+                                onApply = onApplyCost?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Cost applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.serialNumber?.let { value ->
+                            DetectedFieldRow(
+                                label = "Serial number",
+                                value = value,
+                                onApply = onApplySerialNumber?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Serial number applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.modelNumber?.let { value ->
+                            DetectedFieldRow(
+                                label = "Model number",
+                                value = value,
+                                onApply = onApplyModelNumber?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Model number applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.retailer?.let { value ->
+                            DetectedFieldRow(
+                                label = "Retailer",
+                                value = value,
+                                onApply = onApplyRetailer?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Retailer applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.invoiceNumber?.let { value ->
+                            DetectedFieldRow(
+                                label = "Invoice number",
+                                value = value,
+                                onApply = onApplyInvoiceNumber?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Invoice number applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.referenceNumber?.let { value ->
+                            DetectedFieldRow(
+                                label = "Reference / policy / contract number",
+                                value = value,
+                                onApply = onApplyReferenceNumber?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Reference number applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
                 attachment.rawOcrText?.takeIf { it.isNotBlank() }?.let { rawText ->
                     Row(
                         modifier = Modifier
@@ -275,4 +447,27 @@ fun AttachmentViewerDialog(attachment: Attachment, onDismiss: () -> Unit) {
             }
         }
     )
+}
+
+/**
+ * One labelled row inside the "Detected from scan" block above: a field
+ * name + the value parseReceiptFields extracted, with an "Apply" text
+ * button when the caller wired a callback for this specific field (null
+ * on ItemDetailScreen's view-only call site -- see AttachmentViewerDialog's
+ * doc comment).
+ */
+@Composable
+private fun DetectedFieldRow(label: String, value: String, onApply: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (onApply != null) {
+            TextButton(onClick = onApply) { Text("Apply") }
+        }
+    }
 }

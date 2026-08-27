@@ -62,11 +62,14 @@ class ItemRepository(
      */
     suspend fun saveItem(item: Item, reminderOffsets: List<Int> = DEFAULT_REMINDER_OFFSETS): Long {
         val isNew = item.id == 0L
+        // AMC service-visit tracking, 2026-08-26: only AMC items carry
+        // currentPeriodStart/serviceIntervalMonths -- see applyAmcPeriodTracking.
+        val toSave = if (item.category == ItemCategory.AMC) applyAmcPeriodTracking(item, isNew) else item
         val id = if (isNew) {
-            itemDao.insert(item)
+            itemDao.insert(toSave)
         } else {
-            itemDao.update(item)
-            item.id
+            itemDao.update(toSave)
+            toSave.id
         }
         if (isNew) {
             reminderRuleDao.insertAll(reminderOffsets.map { ReminderRule(itemId = id, daysBeforeExpiry = it) })
@@ -79,6 +82,49 @@ class ItemRepository(
         return id
     }
 
+    /**
+     * AMC-only period bookkeeping, run on every save (feedback, 2026-08-26).
+     *
+     * New item: seeds currentPeriodStart (purchaseDate, else today) and
+     * auto-fills serviceIntervalMonths if the caller left it blank -- same
+     * blank-fields-only convention OCR auto-fill uses elsewhere, since
+     * serviceIntervalMonths is explicitly user-configurable afterward.
+     *
+     * Existing item whose expiryDate was just extended: that's a renewal
+     * ("reset automatically" was the requested behaviour over a confirm-
+     * first prompt) -- currentPeriodStart moves to today, which IS the
+     * entire reset (computeAmcServiceStatus counts ServiceEvents from
+     * there, so nothing else needs clearing). A blank serviceIntervalMonths
+     * is re-seeded against the new period; one the user already set is
+     * left untouched.
+     *
+     * Existing item, no renewal: currentPeriodStart carries over from the
+     * stored row unchanged -- it's internal/derived, never threaded from
+     * the Add/Edit form, so without this it would silently revert to null
+     * (the Item constructor's default) on every ordinary edit.
+     */
+    private suspend fun applyAmcPeriodTracking(item: Item, isNew: Boolean): Item {
+        val periodStart: LocalDate?
+        val isRenewal: Boolean
+        if (isNew) {
+            periodStart = item.purchaseDate ?: LocalDate.now()
+            isRenewal = false
+        } else {
+            val existing = itemDao.observeItem(item.id).first() ?: return item
+            isRenewal = item.expiryDate.isAfter(existing.expiryDate)
+            periodStart = if (isRenewal) LocalDate.now() else existing.currentPeriodStart
+        }
+        val interval = item.serviceIntervalMonths ?: run {
+            if (isNew || isRenewal) {
+                val basis = periodStart ?: LocalDate.now()
+                item.visitsIncluded?.let { defaultServiceIntervalMonths(basis, item.expiryDate, it) }
+            } else {
+                null
+            }
+        }
+        return item.copy(currentPeriodStart = periodStart, serviceIntervalMonths = interval)
+    }
+
     /** Cascades to that item's attachments and reminder rules in the
      *  database (Attachment/ReminderRule both have ON DELETE CASCADE FKs
      *  on itemId) -- but NOT to attachment backing files on disk, which
@@ -87,14 +133,24 @@ class ItemRepository(
      *  per attachment, same division of responsibility as deleteAttachment(). */
     suspend fun deleteItem(item: Item) = itemDao.delete(item)
 
-    suspend fun archiveItem(id: Long) = itemDao.setStatus(id, ItemStatus.ARCHIVED)
+    suspend fun archiveItem(id: Long) = itemDao.archive(id, LocalDate.now())
 
-    /** Sprint 8: undo for swipe-to-archive. */
-    suspend fun unarchiveItem(id: Long) = itemDao.setStatus(id, ItemStatus.ACTIVE)
+    // Sprint 8: undo for swipe-to-archive (the 5-second snackbar). Also the
+    // Restore action on the Archived items recovery screen (2026-08-26) --
+    // same call either way, since restoring IS undoing an archive.
+    suspend fun unarchiveItem(id: Long) = itemDao.unarchive(id)
+
+    /** Feedback, 2026-08-26: powers the Archived items recovery screen. */
+    fun observeArchivedItems(): Flow<List<Item>> = itemDao.observeArchivedItems()
 
     /** Called from the "Mark serviced/renewed" notification action and the Detail screen button. */
-    suspend fun markServiced(itemId: Long, newExpiry: LocalDate, note: String? = null) {
-        serviceEventDao.insert(ServiceEvent(itemId = itemId, date = LocalDate.now(), note = note))
+    // Feedback, 2026-08-25: serviceDate now caller-supplied (defaults to
+    // today, same as before) -- ItemDetailScreen's "Mark serviced" dialog
+    // added a date picker for it instead of the event always being logged
+    // as happening today, which was wrong for a user recording a service
+    // after the fact.
+    suspend fun markServiced(itemId: Long, newExpiry: LocalDate, serviceDate: LocalDate = LocalDate.now(), note: String? = null) {
+        serviceEventDao.insert(ServiceEvent(itemId = itemId, date = serviceDate, note = note))
         itemDao.updateExpiry(itemId, newExpiry)
         // New expiry -> every rule's countdown restarts, otherwise a rule
         // that already fired against the OLD expiry stays silently spent
@@ -106,6 +162,33 @@ class ItemRepository(
         if (resetCount == 0) {
             reminderRuleDao.insertAll(DEFAULT_REMINDER_OFFSETS.map { ReminderRule(itemId = itemId, daysBeforeExpiry = it) })
         }
+    }
+
+    /**
+     * AMC-only: logs a service visit WITHOUT touching expiryDate or
+     * currentPeriodStart -- deliberately separate from markServiced(),
+     * which is a renewal action. Feedback, 2026-08-26: "a counter to
+     * record the number of services" is exactly this -- a plain
+     * ServiceEvent, counted against the current period by
+     * computeAmcServiceStatus. Reminder rules are untouched too: expiry
+     * didn't change, so the expiry countdown shouldn't restart.
+     *
+     * Returns the new ServiceEvent's id (feedback follow-up, 2026-08-26:
+     * "allow attaching the vendor-provided receipt" -- the caller needs
+     * this id to link an Attachment.serviceEventId to the visit just
+     * logged, since the receipt can only be inserted once the row it
+     * attaches to actually exists).
+     */
+    suspend fun logAmcService(itemId: Long, serviceDate: LocalDate, note: String? = null, cost: Double? = null): Long =
+        serviceEventDao.insert(ServiceEvent(itemId = itemId, date = serviceDate, note = note, cost = cost))
+
+    /** AMC service-visit tracking follow-up, 2026-08-26 -- see Attachment.serviceEventId's doc comment. */
+    fun observeAttachmentsForServiceEvent(serviceEventId: Long): Flow<List<Attachment>> =
+        attachmentDao.observeForServiceEvent(serviceEventId)
+
+    /** AMC service-visit tracking, 2026-08-26 -- see Item.serviceDueNotifiedForDate. */
+    suspend fun markServiceDueNotified(itemId: Long, forDate: LocalDate) {
+        itemDao.updateServiceDueNotifiedForDate(itemId, forDate)
     }
 
     suspend fun addAttachment(attachment: Attachment): Long = attachmentDao.insert(attachment)

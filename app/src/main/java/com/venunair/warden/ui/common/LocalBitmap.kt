@@ -1,8 +1,10 @@
 package com.venunair.warden.ui.common
 
+import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,6 +12,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -89,5 +92,51 @@ private fun decodeSampledBitmap(context: Context, uri: Uri, reqWidth: Int, reqHe
     // so this opens a fresh stream rather than reusing the bounds-pass one.
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     val secondStream = resolver.openInputStream(uri) ?: return null
-    return secondStream.use { stream -> BitmapFactory.decodeStream(stream, null, options) }
+    val bitmap = secondStream.use { stream -> BitmapFactory.decodeStream(stream, null, options) } ?: return null
+
+    // BitmapFactory NEVER applies a JPEG's EXIF orientation tag on its own
+    // -- it only decodes raw pixels. Most phone camera sensors are
+    // physically landscape; a portrait photo is very commonly stored as
+    // landscape pixels plus an EXIF tag saying "display this rotated 90°".
+    // Every gallery app and Android's own image viewer reads that tag, so
+    // a photo looks upright everywhere a human looks at it -- but this
+    // function was silently handing OCR (and, before this fix, the
+    // thumbnail preview) the raw, sideways pixels instead, which is why a
+    // real receipt photo could come back with zero usable OCR text despite
+    // looking completely normal in the gallery. Confirmed directly: OCR
+    // against a real (sideways-stored) receipt photo failed completely at
+    // the raw orientation and read cleanly once rotated per its EXIF tag.
+    val rotationDegrees = readExifRotationDegrees(resolver, uri)
+    return if (rotationDegrees == 0) bitmap else rotateBitmap(bitmap, rotationDegrees)
+}
+
+/**
+ * Only handles the three plain rotations (90/180/270) -- by far the
+ * overwhelming majority of real camera output. Mirrored/transposed EXIF
+ * values (front-camera flips) fall through to "no rotation", same as
+ * before this fix, rather than risking a wrong transform for a case this
+ * app doesn't realistically hit (receipts and warranty cards are always
+ * shot with the rear camera).
+ */
+private fun readExifRotationDegrees(resolver: ContentResolver, uri: Uri): Int {
+    val orientation = runCatching {
+        resolver.openInputStream(uri)?.use { stream ->
+            ExifInterface(stream).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+            )
+        }
+    }.getOrNull() ?: ExifInterface.ORIENTATION_NORMAL
+    return when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> 90
+        ExifInterface.ORIENTATION_ROTATE_180 -> 180
+        ExifInterface.ORIENTATION_ROTATE_270 -> 270
+        else -> 0
+    }
+}
+
+private fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
+    val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
+    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    if (rotated !== bitmap) bitmap.recycle()
+    return rotated
 }

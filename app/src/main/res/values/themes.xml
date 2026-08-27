@@ -18,7 +18,13 @@
     -->
     <style name="Theme.Warden.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/warden_primary</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <!-- UI redesign pass, 2026-08-25: the vector drawable this pointed
+             at (drawable/ic_launcher_foreground.xml, the old shield
+             placeholder) was deleted — the real logo glyph is now a
+             raster mipmap (one PNG per density bucket, same asset the
+             adaptive launcher icon uses). @mipmap/... is a valid drawable
+             reference here; mipmap is just a drawable resource type. -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.Warden</item>
     </style>
 </resources>

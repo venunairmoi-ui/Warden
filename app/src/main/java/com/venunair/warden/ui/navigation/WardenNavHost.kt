@@ -20,20 +20,47 @@ import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.SettingsRepository
 import com.venunair.warden.data.UserPreferences
 import com.venunair.warden.ui.additem.AddEditItemScreen
+import com.venunair.warden.ui.archive.ArchivedItemsScreen
+import com.venunair.warden.ui.autodetect.AutoDetectSuggestionsScreen
 import com.venunair.warden.ui.home.HomeScreen
+import com.venunair.warden.ui.home.HomeViewModel
+import com.venunair.warden.ui.home.OverviewScreen
 import com.venunair.warden.ui.itemdetail.ItemDetailScreen
 import com.venunair.warden.ui.onboarding.OnboardingScreen
 import com.venunair.warden.ui.settings.SettingsScreen
+import com.venunair.warden.ui.splash.SplashScreen
 import kotlinx.coroutines.launch
 
 sealed class WardenDestination(val route: String) {
+    data object Splash : WardenDestination("splash")
     data object Onboarding : WardenDestination("onboarding")
+    // Overview screen pass, 2026-08-25: "home" now points at OverviewScreen
+    // (the new landing screen) instead of the item list -- unchanged route
+    // NAME so Splash/Onboarding's existing navigate-to-Home calls below
+    // don't need to change, only what's mounted there. The item list
+    // itself (formerly what "home" meant) is now Products, below.
     data object Home : WardenDestination("home")
+    // Optional query args: filter names a HomeViewModel.QuickFilter (unset
+    // = unfiltered), search opens the list with search already active. Both
+    // default off so plain "products" (e.g. Overview's total-items tap)
+    // still works. See [route] for the encoder side.
+    data object Products : WardenDestination("products?filter={filter}&search={search}") {
+        fun route(filter: HomeViewModel.QuickFilter? = null, startInSearch: Boolean = false): String {
+            val params = mutableListOf<String>()
+            filter?.let { params.add("filter=${it.name}") }
+            if (startInSearch) params.add("search=true")
+            return if (params.isEmpty()) "products" else "products?" + params.joinToString("&")
+        }
+    }
     data object AddItem : WardenDestination("item/new")
     data object EditItem : WardenDestination("item/{itemId}/edit")
     data object ItemDetail : WardenDestination("item/{itemId}")
     data object CameraCapture : WardenDestination("camera_capture")
     data object Settings : WardenDestination("settings")
+    data object AutoDetectSuggestions : WardenDestination("auto_detect_suggestions")
+    // Feedback, 2026-08-26: reachable from Settings -- see
+    // ArchivedItemsScreen's own doc comment for why this exists.
+    data object ArchivedItems : WardenDestination("archived_items")
 
     fun editRoute(itemId: Long) = "item/$itemId/edit"
     fun detailRoute(itemId: Long) = "item/$itemId"
@@ -125,9 +152,20 @@ fun WardenNavHost(
         }
     }
 
+    // UI redesign pass, 2026-08-25: the new brand Splash screen is the
+    // normal cold-start destination, EXCEPT when this cold start is itself
+    // a deep link / share hand-off (a notification tap while the app was
+    // fully closed, so onCreate ran fresh) -- that path should land the
+    // user on their target screen immediately, not detour through a ~600ms
+    // brand moment first. Read once here (deepLinkTarget/pendingShare are
+    // already resolved synchronously in MainActivity.onCreate before
+    // setContent runs, so there's no race with the LaunchedEffects below).
+    val skipSplash = deepLinkTarget != null || pendingShare != null
+    val realStartDestination = if (startAtOnboarding) WardenDestination.Onboarding.route else WardenDestination.Home.route
+
     NavHost(
         navController = navController,
-        startDestination = if (startAtOnboarding) WardenDestination.Onboarding.route else WardenDestination.Home.route,
+        startDestination = if (skipSplash) realStartDestination else WardenDestination.Splash.route,
         // Default transitions for all destinations: horizontal slide
         // (forward = right-to-left, back = left-to-right) with a subtle
         // fade so the transition doesn't jump harshly at the edges.
@@ -156,6 +194,15 @@ fun WardenNavHost(
             ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
         }
     ) {
+        composable(WardenDestination.Splash.route) {
+            SplashScreen(
+                onFinished = {
+                    navController.navigate(realStartDestination) {
+                        popUpTo(WardenDestination.Splash.route) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(WardenDestination.Onboarding.route) {
             OnboardingScreen(
                 onFinished = {
@@ -167,16 +214,76 @@ fun WardenNavHost(
             )
         }
         composable(WardenDestination.Home.route) {
+            OverviewScreen(
+                repository = repository,
+                onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
+                onOpenSettings = { navController.navigate(WardenDestination.Settings.route) },
+                pendingSuggestionsCount = preferences.pendingAutoDetectSuggestions.size,
+                onOpenAutoDetectSuggestions = { navController.navigate(WardenDestination.AutoDetectSuggestions.route) },
+                onOpenProducts = { filter, startInSearch ->
+                    navController.navigate(WardenDestination.Products.route(filter, startInSearch))
+                }
+            )
+        }
+        composable(
+            route = WardenDestination.Products.route,
+            arguments = listOf(
+                navArgument("filter") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("search") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            )
+        ) { backStackEntry ->
+            val filter = backStackEntry.arguments?.getString("filter")?.let { name ->
+                runCatching { HomeViewModel.QuickFilter.valueOf(name) }.getOrNull()
+            }
+            val startInSearch = backStackEntry.arguments?.getBoolean("search") ?: false
             HomeScreen(
                 repository = repository,
                 onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
                 onOpenItem = { id -> navController.navigate(WardenDestination.ItemDetail.detailRoute(id)) },
-                onOpenSettings = { navController.navigate(WardenDestination.Settings.route) }
+                onBack = { navController.popBackStack() },
+                initialFilter = filter,
+                startInSearch = startInSearch
+            )
+        }
+        composable(WardenDestination.AutoDetectSuggestions.route) {
+            AutoDetectSuggestionsScreen(
+                settingsRepository = settingsRepository,
+                onBack = { navController.popBackStack() },
+                onAddSuggestion = { suggestion ->
+                    // Same SavedStateHandle hand-off the top-level
+                    // LaunchedEffect(pendingShare) block above uses for a
+                    // notification-tap PendingShare -- reused directly here
+                    // (rather than round-tripping through MainActivity) since
+                    // this action already runs inside the nav graph. source =
+                    // "AUTO_DETECT" so AddEditItemScreen records the same
+                    // provenance either entry point produces.
+                    navController.navigate(WardenDestination.AddItem.route)
+                    navController.currentBackStackEntry?.savedStateHandle?.apply {
+                        set(PENDING_SHARE_URI_KEY, suggestion.imageUri)
+                        set(PENDING_SHARE_MIME_KEY, "IMAGE")
+                        set(PENDING_SHARE_NAME_KEY, "Auto-detected receipt")
+                        set(PENDING_SHARE_SOURCE_KEY, "AUTO_DETECT")
+                    }
+                }
             )
         }
         composable(WardenDestination.Settings.route) {
             SettingsScreen(
                 repository = settingsRepository,
+                onBack = { navController.popBackStack() },
+                onOpenArchivedItems = { navController.navigate(WardenDestination.ArchivedItems.route) }
+            )
+        }
+        composable(WardenDestination.ArchivedItems.route) {
+            ArchivedItemsScreen(
+                repository = repository,
                 onBack = { navController.popBackStack() }
             )
         }

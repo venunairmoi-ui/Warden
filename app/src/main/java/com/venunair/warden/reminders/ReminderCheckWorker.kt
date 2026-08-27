@@ -5,6 +5,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.venunair.warden.WardenApplication
 import com.venunair.warden.data.Item
+import com.venunair.warden.data.ItemCategory
+import com.venunair.warden.data.computeAmcServiceStatus
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -32,14 +35,18 @@ class ReminderCheckWorker(
         val repository = (applicationContext as WardenApplication).repository
         val today = LocalDate.now()
 
-        repository.getActiveItemsWithEnabledRules().forEach { (item, rules) ->
+        val itemsWithRules = repository.getActiveItemsWithEnabledRules()
+
+        itemsWithRules.forEach { (item, rules) ->
             val daysLeft = ChronoUnit.DAYS.between(today, item.expiryDate)
             rules.forEach { rule ->
                 val due = daysLeft <= rule.daysBeforeExpiry
                 val alreadyFired = rule.lastFiredDate != null
                 val stillSnoozed = rule.snoozedUntil?.isAfter(today) == true
                 if (due && !alreadyFired && !stillSnoozed) {
-                    // Sprint 8: build smart suffix based on repair cost ratio
+                    // Sprint 8: build smart suffix based on repair cost ratio.
+                    // Feedback, 2026-08-26: also appends an AMC unused-visits
+                    // warning here when applicable -- see buildAmcRemainingWarning.
                     val smartSuffix = buildSmartSuffix(repository, item)
 
                     val posted = NotificationHelper.showReminder(
@@ -52,14 +59,58 @@ class ReminderCheckWorker(
             }
         }
 
+        // AMC service-visit tracking, 2026-08-26: "notify the user when a
+        // service is due... so they can take appropriate action" --
+        // independent of the expiry-based ReminderRules above; this fires
+        // off the computed next-expected-service date instead (see
+        // computeAmcServiceStatus). Self-resetting: serviceDueNotifiedForDate
+        // only suppresses a repeat for the SAME expected date, so logging a
+        // new service or renewing the contract (both change what "next
+        // expected" computes to) makes a fresh nudge eligible again with no
+        // explicit clear step needed.
+        itemsWithRules.map { it.first }
+            .filter { it.category == ItemCategory.AMC }
+            .forEach { item ->
+                val events = repository.observeServiceHistory(item.id).first()
+                val status = computeAmcServiceStatus(item, events)
+                val nextExpected = status?.nextExpectedDate
+                if (status != null && nextExpected != null) {
+                    val due = !nextExpected.isAfter(today)
+                    val alreadyNotified = item.serviceDueNotifiedForDate == nextExpected
+                    if (due && status.remaining > 0 && !alreadyNotified) {
+                        val posted = NotificationHelper.showServiceDueReminder(
+                            applicationContext, item, status.remaining
+                        )
+                        if (posted) {
+                            repository.markServiceDueNotified(item.id, nextExpected)
+                        }
+                    }
+                }
+            }
+
         return Result.success()
     }
 
     /**
      * If total service costs exceed 20% of the item's purchase price,
-     * return a warning line for the notification body. Otherwise null.
+     * appends a repair-cost warning. AMC items with unused included
+     * services also get a second line reminding them before expiry --
+     * feedback, 2026-08-26: "inform them... one or two services remain,
+     * so they can take appropriate action" before the contract lapses and
+     * those visits are gone for good. Returns null if neither applies.
      */
     private suspend fun buildSmartSuffix(
+        repository: com.venunair.warden.data.ItemRepository,
+        item: Item
+    ): String? {
+        val lines = listOfNotNull(
+            buildRepairWarning(repository, item),
+            buildAmcRemainingWarning(repository, item)
+        )
+        return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    }
+
+    private suspend fun buildRepairWarning(
         repository: com.venunair.warden.data.ItemRepository,
         item: Item
     ): String? {
@@ -71,5 +122,16 @@ class ReminderCheckWorker(
         if (ratio < 0.20) return null
         val pct = (ratio * 100).toInt()
         return "Repair costs are $pct% of purchase price — consider replacing"
+    }
+
+    private suspend fun buildAmcRemainingWarning(
+        repository: com.venunair.warden.data.ItemRepository,
+        item: Item
+    ): String? {
+        if (item.category != ItemCategory.AMC) return null
+        val events = repository.observeServiceHistory(item.id).first()
+        val status = computeAmcServiceStatus(item, events) ?: return null
+        if (status.remaining <= 0) return null
+        return "You still have ${status.remaining} unused service${if (status.remaining != 1) "s" else ""} on this AMC"
     }
 }

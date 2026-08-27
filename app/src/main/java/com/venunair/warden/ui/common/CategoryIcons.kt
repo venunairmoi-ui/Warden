@@ -1,13 +1,11 @@
 package com.venunair.warden.ui.common
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.CardMembership
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.venunair.warden.data.ItemCategory
@@ -15,11 +13,11 @@ import com.venunair.warden.data.ItemCategory
 /** Shared between Home and Detail so a category always reads the same way. */
 fun categoryIcon(category: ItemCategory): ImageVector = when (category) {
     ItemCategory.WARRANTY -> Icons.Filled.Shield
-    ItemCategory.AMC -> Icons.Filled.Build
+    ItemCategory.INSURANCE -> Icons.Filled.Security
     ItemCategory.SUBSCRIPTION -> Icons.Filled.Autorenew
-    ItemCategory.DOCUMENT -> Icons.Filled.Description
-    ItemCategory.VEHICLE -> Icons.Filled.DirectionsCar
-    ItemCategory.HOME -> Icons.Filled.Home
-    ItemCategory.OFFICE -> Icons.Filled.Business
-    ItemCategory.FINANCIAL -> Icons.Filled.AccountBalance
+    ItemCategory.AMC -> Icons.Filled.Build
+    ItemCategory.MEMBERSHIP -> Icons.Filled.CardMembership
+    // Retaxonomy, 2026-08-25: catch-all migration bucket -- see
+    // ItemCategory's own doc comment.
+    ItemCategory.OTHER -> Icons.Filled.Category
 }

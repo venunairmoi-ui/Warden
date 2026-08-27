@@ -11,6 +11,11 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE itemId = :itemId ORDER BY addedAt DESC")
     fun observeForItem(itemId: Long): Flow<List<Attachment>>
 
+    // AMC service-visit tracking follow-up, 2026-08-26 -- see
+    // Attachment.serviceEventId's doc comment.
+    @Query("SELECT * FROM attachments WHERE serviceEventId = :serviceEventId ORDER BY addedAt DESC")
+    fun observeForServiceEvent(serviceEventId: Long): Flow<List<Attachment>>
+
     @Insert
     suspend fun insert(attachment: Attachment): Long
 

@@ -34,6 +34,7 @@ class AddEditItemViewModel(
         name: String,
         vendor: String?,
         category: ItemCategory,
+        subCategory: String?,
         itemType: ItemType,
         purchaseDate: LocalDate?,
         expiryDate: LocalDate,
@@ -49,6 +50,15 @@ class AddEditItemViewModel(
         billingCycle: BillingCycle?,
         billingAmount: Double?,
         autoRenew: Boolean,
+        // Product/Service reintroduction addition: AMC-only, null elsewhere
+        visitsIncluded: Int?,
+        // AMC service-visit tracking addition, 2026-08-26: AMC-only, null
+        // elsewhere. Threaded straight through from the form's own text
+        // field (blank -> null), same convention every other optional
+        // field here follows -- ItemRepository.applyAmcPeriodTracking
+        // auto-fills a default when this comes through null on a new item
+        // or a renewal, but never overrides a value the user actually typed.
+        serviceIntervalMonths: Int?,
         // Caller passes the loaded item's current status on an edit (it has
         // it, from the same Flow the rest of the form is pre-filled from).
         // Without this, every edit silently reset status back to the Item
@@ -66,6 +76,13 @@ class AddEditItemViewModel(
                 name = name,
                 vendor = vendor,
                 category = category,
+                subCategory = subCategory,
+                // Product/Service reintroduction, 2026-08-25: back to being
+                // a real user choice again (see ItemType's doc comment for
+                // why this one doesn't repeat the old field's redundancy
+                // problem) -- caller passes whatever the Add/Edit dropdown
+                // holds, defaulted from category only once when that
+                // dropdown first appears.
                 itemType = itemType,
                 purchaseDate = purchaseDate,
                 expiryDate = expiryDate,
@@ -80,7 +97,9 @@ class AddEditItemViewModel(
                 location = location,
                 billingCycle = billingCycle,
                 billingAmount = billingAmount,
-                autoRenew = autoRenew
+                autoRenew = autoRenew,
+                visitsIncluded = visitsIncluded,
+                serviceIntervalMonths = serviceIntervalMonths
                 // NOTE: createdAt resets to today on every edit since Item's
                 // default isn't preserved here. Harmless for now — nothing
                 // reads createdAt yet — but revisit if you add "sort by date

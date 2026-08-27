@@ -36,6 +36,13 @@ object NotificationHelper {
     // both real item IDs (used as reminder notification IDs) and
     // DIGEST_NOTIFICATION_ID, so none of the three can ever collide.
     const val AUTO_DETECT_NOTIFICATION_ID_BASE = 900_000_000
+    // AMC service-visit tracking, 2026-08-26: offset so a "service may be
+    // due" nudge (showServiceDueReminder) never collides with that same
+    // item's own expiry-based notification id (item.id.toInt(), used by
+    // showReminder above). Safely clear of AUTO_DETECT's 900M+ range as
+    // long as item ids stay well under 100M, which they will for a
+    // single-user local database.
+    const val SERVICE_DUE_NOTIFICATION_ID_OFFSET = 800_000_000
 
     /**
      * minSdk is already 26 (O), the same level NotificationChannel was
@@ -137,10 +144,10 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             // Accent color for the small-icon circle / header tint on
             // launchers that colorize by it (stock Android 8+, and several
-            // OEM skins) — WardenPrimary, same brand color as the in-app
-            // theme (ui/theme/Color.kt), so the notification doesn't fall
-            // back to a low-contrast default.
-            .setColor(0xFF2E5E4E.toInt())
+            // OEM skins) — the Wisma redesign's electric-blue brand accent
+            // (WardenPrimaryContainerDark in ui/theme/Color.kt, 2026-08-25),
+            // so the notification doesn't fall back to a low-contrast default.
+            .setColor(0xFF0052FF.toInt())
             // Matches the channel's IMPORTANCE_HIGH. On API 26+ (this app's
             // minSdk) the channel is what actually governs heads-up/sound
             // behavior — this is only a fallback for pre-channel Android,
@@ -156,6 +163,51 @@ object NotificationHelper {
             // visible button text.
             .addAction(0, "Serviced", actionPendingIntent(context, ACTION_MARK_SERVICED, item.id, rule.id, notificationId))
             .addAction(0, "Snooze 7d", actionPendingIntent(context, ACTION_SNOOZE, item.id, rule.id, notificationId))
+            .build()
+
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        return true
+    }
+
+    /**
+     * AMC-only, feedback 2026-08-26: "notify the user when a service is
+     * due, or inform them that a service may be due... so they can take
+     * appropriate action". Distinct from [showReminder] -- this fires off
+     * the computed next-expected-service date (see computeAmcServiceStatus),
+     * not a days-before-expiry ReminderRule, and deliberately uses
+     * PRIORITY_DEFAULT rather than HIGH: it's a "may be due" estimate
+     * based on evenly-spreading the contract's visit count, not a firm
+     * deadline the vendor promised, so it shouldn't heads-up as urgently
+     * as an actual expiry warning.
+     */
+    fun showServiceDueReminder(context: Context, item: Item, remaining: Int): Boolean {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return false
+
+        val notificationId = SERVICE_DUE_NOTIFICATION_ID_OFFSET + item.id.toInt()
+        val body = "You may be due for a service — $remaining service${if (remaining != 1) "s" else ""} left this AMC period"
+
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                putExtra(MainActivity.EXTRA_DEEP_LINK_ITEM_ID, item.id)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(item.name)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setColor(0xFF0052FF.toInt())
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
@@ -198,7 +250,7 @@ object NotificationHelper {
             .setContentTitle(title)
             .setContentText(lines.first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setColor(0xFF2E5E4E.toInt())
+            .setColor(0xFF0052FF.toInt())
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
@@ -225,6 +277,19 @@ object NotificationHelper {
         ) == PackageManager.PERMISSION_GRANTED
         if (!hasPermission) return false
 
+        // POST_NOTIFICATIONS being granted is only the app-level switch --
+        // a user (or an OEM's own notification management) can separately
+        // disable just THIS channel while every other Warden notification
+        // keeps working fine, from Settings > Apps > Warden > Notifications.
+        // NotificationManagerCompat.notify() doesn't throw or signal this in
+        // any way when that happens -- it silently no-ops -- so without this
+        // check, this function's return value could report "posted" for a
+        // notification nobody will ever see.
+        val channelDisabled = NotificationManagerCompat.from(context)
+            .getNotificationChannel(AUTO_DETECT_CHANNEL_ID)
+            ?.importance == NotificationManager.IMPORTANCE_NONE
+        if (channelDisabled) return false
+
         val contentIntent = PendingIntent.getActivity(
             context,
             notificationId,
@@ -241,7 +306,7 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Looks like a receipt")
             .setContentText("Add it to Warden?")
-            .setColor(0xFF2E5E4E.toInt())
+            .setColor(0xFF0052FF.toInt())
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)

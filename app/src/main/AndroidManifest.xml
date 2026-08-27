@@ -24,8 +24,20 @@
          without this second declaration, Auto-detect would silently never
          work on any pre-Android-13 device, a meaningful share of the
          Indian install base this app targets.
+
+         READ_MEDIA_VISUAL_USER_SELECTED (API 34+) covers the "Select
+         photos" partial-access grant: on Android 14+, requesting
+         READ_MEDIA_IMAGES can surface Allow all / Select photos / Don't
+         allow, and choosing "Select photos" denies READ_MEDIA_IMAGES
+         itself while silently granting this one instead, scoped to the
+         chosen photos. Declaring it here is what lets that grant actually
+         reach the app instead of being dropped by the OS. See
+         MediaPermission.hasMediaImageAccess, which is the check every
+         access point (worker, Settings toggle, permission callback) uses
+         instead of testing READ_MEDIA_IMAGES alone.
     -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

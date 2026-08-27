@@ -4,36 +4,130 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.time.LocalDate
 
+// Retaxonomy, 2026-08-25: was WARRANTY/AMC/SUBSCRIPTION/DOCUMENT/VEHICLE/
+// HOME/OFFICE/FINANCIAL. Replaced with the 5 categories below plus OTHER,
+// a catch-all migration bucket that only exists to receive whatever an
+// existing item's old (now-deleted) category doesn't map onto one of the
+// 5 -- see WardenDatabase's MIGRATION_5_6. OTHER stays a normal, pickable
+// category rather than a hidden one specifically so those migrated items
+// are easy to find (filter chip) and manually recategorize.
 enum class ItemCategory {
-    WARRANTY, AMC, SUBSCRIPTION, DOCUMENT,
-    VEHICLE, HOME, OFFICE, FINANCIAL;
+    WARRANTY, INSURANCE, SUBSCRIPTION, AMC, MEMBERSHIP, OTHER;
 
     /** Human-readable label for UI display (replaces raw enum .name). */
     val displayName: String
         get() = when (this) {
             WARRANTY -> "Warranty"
-            AMC -> "Service Contract"
+            INSURANCE -> "Insurance"
             SUBSCRIPTION -> "Subscription"
-            DOCUMENT -> "Document"
-            VEHICLE -> "Vehicle"
-            HOME -> "Home"
-            OFFICE -> "Office"
-            FINANCIAL -> "Financial"
+            // Retaxonomy, 2026-08-25: was "Service Contract", which read as
+            // identical text to ItemType.SERVICE_CONTRACT's own displayName
+            // in a different dropdown on the same form -- two unrelated
+            // fields showing the same words. Plain "AMC" here removes the
+            // collision; ItemType is untouched.
+            AMC -> "AMC"
+            MEMBERSHIP -> "Membership"
+            OTHER -> "Other"
         }
+}
+
+/**
+ * Retaxonomy, 2026-08-25: fixed subcategory options per [ItemCategory],
+ * shown as a second, category-dependent dropdown in the Add/Edit form
+ * (see AddEditItemScreen's subcategory ExposedDropdownMenuBox) and stored
+ * as plain text on [Item.subCategory] -- not its own enum, since a display
+ * label is all a subcategory value is ever used for (no branching logic
+ * reads it), and a plain string keeps adding/renaming a subcategory a
+ * one-line change here with no Room migration, matching how [Item.location]
+ * (also free text) already works in this codebase. OTHER has no
+ * subcategories -- it's a temporary bucket for items whose pre-retaxonomy
+ * category no longer exists, not a real category people file new items
+ * under, so the Add/Edit form skips the subcategory field entirely for it.
+ */
+fun subcategoriesFor(category: ItemCategory): List<String> = when (category) {
+    ItemCategory.WARRANTY -> listOf("Electronics", "Kitchen Appliances", "Home Improvement", "Others")
+    ItemCategory.INSURANCE -> listOf("Vehicle", "Property", "Luxury Items", "Electronics", "Health", "Others")
+    ItemCategory.SUBSCRIPTION -> listOf("Entertainment", "Software", "Smart Homes", "Others")
+    ItemCategory.AMC -> listOf("RO/Purifier", "Electronics", "Kitchen Appliances", "Others")
+    ItemCategory.MEMBERSHIP -> listOf("Fitness", "Sports", "Travel", "Hotel", "Shopping", "Others")
+    ItemCategory.OTHER -> emptyList()
 }
 
 enum class ItemStatus { ACTIVE, EXPIRED, ARCHIVED }
 
-/** What kind of thing the user is tracking — drives conditional form fields. */
+/**
+ * Whether there's a physical thing behind this record, or it's purely a
+ * service/contract with nothing to serial-number. Independent of
+ * [ItemCategory] deliberately -- unlike the old 3-value ItemType this
+ * replaces (PRODUCT/SUBSCRIPTION/SERVICE_CONTRACT, removed 2026-08-25
+ * for being a near-restatement of Category), Product-vs-Service is a
+ * genuinely different axis that varies *within* a category: a fridge
+ * warranty (Product) vs. a workmanship warranty on a renovation
+ * (Service); an RO-purifier AMC (Product) vs. a housekeeping AMC (pure
+ * Service, nothing to serial-number); a subscription box (Product) vs.
+ * Netflix (Service). Drives which optional field-set shows on Add/Edit
+ * (Product details: serial/model/retailer/invoice) -- see
+ * AddEditItemScreen. Always a real, user-editable choice (defaulted from
+ * category via [ItemCategory.defaultItemType] but never silently
+ * re-derived after that), unlike the old field, so it can't go invisible
+ * and can't drift the way the old one did.
+ */
 enum class ItemType {
-    PRODUCT, SUBSCRIPTION, SERVICE_CONTRACT;
+    PRODUCT, SERVICE;
 
     val displayName: String
         get() = when (this) {
             PRODUCT -> "Product"
-            SUBSCRIPTION -> "Subscription"
-            SERVICE_CONTRACT -> "Service Contract"
+            SERVICE -> "Service"
         }
+}
+
+/**
+ * Sensible starting point for [ItemType] when a category is picked --
+ * used once to seed the Add/Edit dropdown's initial value, not to force
+ * or silently re-derive it afterwards (see ItemType's doc comment).
+ * Reflects the *typical* case per category; the user can always pick
+ * the other value for the exceptions (a workmanship warranty, a
+ * housekeeping AMC, a subscription box).
+ */
+fun ItemCategory.defaultItemType(): ItemType = when (this) {
+    ItemCategory.WARRANTY -> ItemType.PRODUCT
+    ItemCategory.AMC -> ItemType.SERVICE
+    ItemCategory.SUBSCRIPTION -> ItemType.SERVICE
+    ItemCategory.INSURANCE -> ItemType.SERVICE
+    ItemCategory.MEMBERSHIP -> ItemType.SERVICE
+    ItemCategory.OTHER -> ItemType.PRODUCT
+}
+
+/**
+ * Category-aware label for [Item.amcNumber] -- same underlying field
+ * reused across categories rather than adding a new column per category
+ * (Insurance's "policy number" and AMC's "contract number" are the same
+ * kind of fact -- a reference number for a document/contract -- just
+ * called different things), matching how [costLabel] below handles the
+ * cost field. Used both as the Add/Edit form field label and, trimmed
+ * of its "(optional)" suffix by the caller, as the read-only detail-row
+ * label.
+ */
+fun ItemCategory.referenceNumberLabel(): String = when (this) {
+    ItemCategory.AMC -> "Contract number"
+    ItemCategory.INSURANCE -> "Policy number"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.MEMBERSHIP, ItemCategory.OTHER ->
+        "AMC / warranty / policy number"
+}
+
+/**
+ * Category-aware label for [Item.cost]. Insurance's "cost" is actually
+ * the sum insured / coverage amount, not a purchase price -- a real
+ * label mismatch, not just cosmetic, since someone reading their own
+ * data back later could otherwise misread a coverage amount as what
+ * they paid. Reuses the existing generic field rather than adding an
+ * Insurance-only column, same reasoning as [referenceNumberLabel].
+ */
+fun ItemCategory.costLabel(): String = when (this) {
+    ItemCategory.INSURANCE -> "Sum insured / coverage amount"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.MEMBERSHIP, ItemCategory.OTHER ->
+        "Cost"
 }
 
 /** Billing recurrence for subscriptions and recurring service contracts. */
@@ -79,7 +173,7 @@ data class Item(
 
     // --- Sprint 6 additions (Room v4 → v5 migration) ---
 
-    /** What kind of tracked item: Product, Subscription, or Service Contract. */
+    /** Whether there's a physical thing here, or it's a pure service/contract. */
     val itemType: ItemType = ItemType.PRODUCT,
 
     /** Manufacturer or product serial number (from invoice/label). */
@@ -105,4 +199,112 @@ data class Item(
 
     /** Whether this subscription auto-renews. */
     val autoRenew: Boolean = false,
+
+    // --- Retaxonomy addition (Room v5 → v6 migration) ---
+
+    /**
+     * Category-dependent subcategory label (see [subcategoriesFor]), e.g.
+     * "Electronics" under Warranty. Free text rather than its own enum --
+     * see [subcategoriesFor]'s doc comment. Nullable/optional: existing
+     * items upgrade with no value rather than being forced into "Others",
+     * and the Add/Edit form doesn't require picking one to save.
+     */
+    val subCategory: String? = null,
+
+    // --- Product/Service reintroduction addition (Room v6 → v7 migration) ---
+
+    /**
+     * AMC-only: the number of service visits the contract entitles you
+     * to (e.g. "2 free visits/year") -- a fact about the contract itself,
+     * not a derived stat. Deliberately NOT paired with a "visits used"
+     * counter: every "Mark serviced / renewed" call both logs a
+     * ServiceEvent AND pushes expiryDate forward (see
+     * ItemRepository.markServiced), so there's no data boundary marking
+     * where one contract period's usage ends and the next begins --
+     * counting ServiceEvent rows would either total every visit ever (
+     * wrong the moment the contract renews) or require inventing a period
+     * boundary the app doesn't actually track. Shown only for AMC items;
+     * null elsewhere.
+     */
+    val visitsIncluded: Int? = null,
+
+    // --- Archive recovery addition (Room v7 → v8 migration) ---
+
+    /**
+     * When this item was archived (see ItemRepository.archiveItem) --
+     * null for anything not currently archived, cleared back to null on
+     * unarchive. Added, 2026-08-26, alongside the Archived items recovery
+     * screen (Settings > Archived items). Before that screen existed,
+     * archiving was effectively one-way once the 5-second "Undo" snackbar
+     * (HomeScreen's SwipeableItemRow) was missed -- observeActiveItems and
+     * searchByNameOrVendor both filter on status != ARCHIVED, so an
+     * archived item vanished from every list, the Overview, and search,
+     * with no other screen showing it and no way back short of finding
+     * the row directly in the database. This field exists purely so that
+     * recovery screen can sort by "what did I just archive" (recency)
+     * rather than an arbitrary order -- not read by anything else.
+     */
+    val archivedAt: LocalDate? = null,
+
+    // --- AMC service-visit tracking addition (Room v8 → v9 migration) ---
+
+    /**
+     * AMC-only: when the current contract period began -- the anchor
+     * [ServiceEvent] rows are counted from/against to derive "services
+     * used this period" (see computeAmcServiceStatus in
+     * AmcServiceTracking.kt). Set once at creation (from purchaseDate, or
+     * today if that's unknown) and reset to today by
+     * ItemRepository.applyAmcPeriodTracking whenever an AMC item's
+     * expiryDate is edited to a LATER date -- that's how a renewal is
+     * detected (feedback, 2026-08-26: "reset automatically" was the
+     * requested behaviour over a confirm-first prompt). This field is
+     * what makes it safe to split "log a visit" from "renew" -- the old
+     * single markServiced() action conflated the two with no period
+     * boundary to count against; see [ItemRepository.logAmcService]'s
+     * doc comment.
+     */
+    val currentPeriodStart: LocalDate? = null,
+
+    /**
+     * AMC-only: expected number of months between services, used to
+     * compute "next service expected around" (period ÷ visitsIncluded,
+     * evenly spread -- feedback, 2026-08-26: "divide the period by the
+     * number of services... and spread them evenly", e.g. a 12-month/
+     * 2-visit contract expects services ~6 months apart, a 24-month/
+     * 4-visit contract also ~6 months apart). Auto-filled once from
+     * visitsIncluded and the contract length whenever this is blank on
+     * save (see ItemRepository.applyAmcPeriodTracking), but always
+     * user-editable afterward and never silently recomputed over a value
+     * already set -- the user explicitly asked for this to stay
+     * configurable rather than fixed.
+     */
+    val serviceIntervalMonths: Int? = null,
+
+    /**
+     * AMC-only, not user-facing: the "next expected service" date the app
+     * already sent a due-service nudge for, so ReminderCheckWorker
+     * doesn't repeat the same nudge every day it stays true. Self-
+     * resetting by construction -- logging a new service or renewing the
+     * contract both change what "next expected" computes to, so the
+     * stored date here stops matching and a fresh nudge becomes eligible
+     * again with no explicit clear() step needed.
+     */
+    val serviceDueNotifiedForDate: LocalDate? = null,
 )
+
+/**
+ * Retaxonomy follow-up, 2026-08-25: single definition of "this item has a
+ * recurring payment attached", used everywhere money/subscription tracking
+ * needs it -- HomeViewModel's Overview money card and QuickFilter.
+ * SUBSCRIPTIONS, its "renewal approaching" grouping bucket, and the daily
+ * digest notification. Replaces the old itemType == SUBSCRIPTION check
+ * those 3 places each ran independently: that only ever caught items
+ * explicitly typed SUBSCRIPTION, so a billed AMC contract or an Insurance
+ * premium was invisible to "Monthly subscriptions" even with real billing
+ * data attached. Keyed on the billing fields themselves rather than
+ * category or the now-derived ItemType, so it can never again silently
+ * drift out of sync with what a user actually entered -- exactly the
+ * class of bug ItemType being independently settable caused once already.
+ */
+val Item.isRecurringPayment: Boolean
+    get() = billingCycle != null && billingAmount != null

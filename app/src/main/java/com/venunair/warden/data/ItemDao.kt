@@ -13,6 +13,12 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE status != 'ARCHIVED' ORDER BY expiryDate ASC")
     fun observeActiveItems(): Flow<List<Item>>
 
+    // Feedback, 2026-08-26: powers the Archived items recovery screen --
+    // most recently archived first (archivedAt), since "what did I just
+    // archive" is the scenario that screen exists for.
+    @Query("SELECT * FROM items WHERE status = 'ARCHIVED' ORDER BY archivedAt DESC")
+    fun observeArchivedItems(): Flow<List<Item>>
+
     @Query("SELECT * FROM items WHERE id = :id")
     fun observeItem(id: Long): Flow<Item?>
 
@@ -34,11 +40,25 @@ interface ItemDao {
     @Delete
     suspend fun delete(item: Item)
 
-    @Query("UPDATE items SET status = :status WHERE id = :id")
-    suspend fun setStatus(id: Long, status: ItemStatus)
+    // Feedback, 2026-08-26: split out of a single generic setStatus(id,
+    // status) (this was its only real usage) so archiving can stamp
+    // archivedAt in the same statement -- see Item.archivedAt's doc
+    // comment for why that field exists.
+    @Query("UPDATE items SET status = 'ARCHIVED', archivedAt = :archivedAt WHERE id = :id")
+    suspend fun archive(id: Long, archivedAt: LocalDate)
+
+    @Query("UPDATE items SET status = 'ACTIVE', archivedAt = NULL WHERE id = :id")
+    suspend fun unarchive(id: Long)
 
     @Query("UPDATE items SET expiryDate = :newExpiry WHERE id = :id")
     suspend fun updateExpiry(id: Long, newExpiry: LocalDate)
+
+    // AMC service-visit tracking, 2026-08-26: marks that a "service due"
+    // nudge was already sent for this specific expected date, so
+    // ReminderCheckWorker doesn't repeat it daily -- see
+    // Item.serviceDueNotifiedForDate's doc comment.
+    @Query("UPDATE items SET serviceDueNotifiedForDate = :forDate WHERE id = :id")
+    suspend fun updateServiceDueNotifiedForDate(id: Long, forDate: LocalDate)
 
     // Sprint 8: full-text search across name and vendor
     @Query(

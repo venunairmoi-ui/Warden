@@ -27,6 +27,18 @@ import java.util.Locale
  * layouts, where that line is at least as often a GSTIN, an invoice
  * number, or a header ("TAX INVOICE") as it is an actual vendor name --
  * exactly the kind of confidently-wrong guess this file exists to avoid.
+ *
+ * Feedback, 2026-08-26: real-device testing (this file's own stated bar
+ * for extending KNOWN_VENDORS) found vendor going unrecognized on ordinary
+ * invoices that print it plainly -- because [findVendor] only ever
+ * consulted a closed brand whitelist, never the document's own "Sold by:"/
+ * "Seller:" line. Added a labeled-line pass ([findVendorFromLabel]) ahead
+ * of the whitelist, same technique serial/model already used successfully,
+ * plus three more Product-details fields the whitelist-only approach never
+ * touched at all: retailer, invoiceNumber, and referenceNumber (feeds
+ * Item.amcNumber -- see [com.venunair.warden.data.referenceNumberLabel]
+ * for its category-aware on-screen label). Deliberately still label-
+ * required for all three, same precision-over-recall bar as serial/model.
  */
 data class ParsedReceiptFields(
     val vendor: String? = null,
@@ -35,7 +47,13 @@ data class ParsedReceiptFields(
     /** Sprint 6: serial number extracted from labeled text on the document. */
     val serialNumber: String? = null,
     /** Sprint 6: model number extracted from labeled text on the document. */
-    val modelNumber: String? = null
+    val modelNumber: String? = null,
+    /** Feedback, 2026-08-26: store/dealer the item was bought from -- distinct from [vendor] (the brand/manufacturer printed on the same document). */
+    val retailer: String? = null,
+    /** Feedback, 2026-08-26: invoice/bill/receipt/order number. */
+    val invoiceNumber: String? = null,
+    /** Feedback, 2026-08-26: policy/contract/AMC/warranty-card number. */
+    val referenceNumber: String? = null
 )
 
 // Deliberately narrow, high-precision candidate patterns over broad ones --
@@ -146,19 +164,103 @@ private val KNOWN_VENDORS = listOf(
     "Netflix", "Airtel", "Jio", "Havells", "Crompton", "Philips"
 )
 
+// Feedback, 2026-08-26: a real receipt/invoice/warranty card almost always
+// names its own seller explicitly -- "Sold by:" (every e-commerce
+// invoice), "Seller:", "Billed by:", "Authorised Dealer:" -- which is a
+// far stronger, document-specific signal than a closed brand whitelist,
+// and it's the whole reason vendor detection kept missing real invoices:
+// KNOWN_VENDORS above can only ever recognize names someone thought to add
+// to it in advance. Checked BEFORE the whitelist in findVendor -- it's
+// more precise (it's what THIS document says, not a guess from a fixed
+// list) and, on marketplace invoices, it's often a different, more
+// correct answer than the whitelist would give anyway (Amazon.in's own
+// "Sold by:" line usually names the actual third-party seller, not
+// "Amazon" itself).
+private val VENDOR_LABEL_KEYWORDS = listOf(
+    "sold by", "seller name", "seller", "billed by", "bill from",
+    "dealer name", "authorized dealer", "authorised dealer",
+    "issued by", "service provider"
+)
+
+// A seller line often carries registration details after the actual name
+// ("Sold by: Appario Retail Private Ltd, GSTIN: 29AAxxx...") -- cut the
+// extracted value at the first such marker rather than keeping the whole
+// tail. Deliberately narrow (a handful of markers) rather than trying to detect
+// every possible trailing clause -- an over-long but otherwise-correct
+// vendor name is a five-second manual trim; this file's precision-over-
+// recall bar is about not inventing a WRONG name, not about perfect
+// tidiness.
+private val VENDOR_TRAILING_MARKERS = listOf("gstin", "gst no", "pan no", "pan:", "cin no", "cin:")
+
+// Feedback, 2026-08-26: same reasoning as VENDOR_LABEL_KEYWORDS above,
+// scoped to retailer (where it was BOUGHT) rather than vendor (who MAKES
+// it) -- Item keeps these as two separate fields (see Item.retailer's own
+// doc comment), and OCR previously never populated retailer at all. A
+// short list of retail chains/marketplaces likely to show up on a real
+// Indian household's electronics purchase, same "extend first if real-
+// device testing turns up a common one it keeps missing" policy
+// KNOWN_VENDORS above already documents -- checked only when no line is
+// explicitly labeled (most warranty cards/AMC contracts have no retailer
+// label at all, since the retailer isn't party to those documents).
+private val RETAILER_KEYWORDS = listOf(
+    "retailer", "store name", "purchased from", "bought from",
+    "shop name", "outlet name"
+)
+private val KNOWN_RETAILERS = listOf(
+    "Croma", "Reliance Digital", "Amazon", "Flipkart", "Vijay Sales",
+    "Tata Cliq", "Snapdeal", "Sathya", "Poorvika", "Bajaj Electronics"
+)
+
+// Feedback, 2026-08-26: Sprint 6 added Item.invoiceNumber, but OCR was
+// never taught to look for one -- same gap as retailer above. "Order
+// id/no/number" covers e-commerce packing-slip-style receipts that never
+// say "invoice" at all.
+private val INVOICE_NUMBER_KEYWORDS = listOf(
+    "invoice no", "invoice number", "invoice #", "bill no", "bill number",
+    "receipt no", "receipt number", "order id", "order no", "order number"
+)
+
+// Feedback, 2026-08-26: feeds Item.amcNumber -- the same reference-number
+// field AMC/Insurance/Warranty categories all reuse under a category-aware
+// label (see ItemCategory.referenceNumberLabel) -- which is exactly the
+// kind of thing a warranty card or AMC contract prints explicitly, and
+// which OCR never looked for at all before this pass.
+private val REFERENCE_NUMBER_KEYWORDS = listOf(
+    "policy no", "policy number", "contract no", "contract number",
+    "agreement no", "agreement number", "amc no", "amc number",
+    "warranty card no", "warranty no", "warranty number"
+)
+
 fun parseReceiptFields(rawText: String): ParsedReceiptFields {
     val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
     return ParsedReceiptFields(
-        vendor = findVendor(rawText),
+        vendor = findVendor(lines, rawText),
         purchaseDate = findDate(lines),
         cost = findCost(lines, rawText),
         serialNumber = findLabeledValue(lines, SERIAL_NUMBER_KEYWORDS),
-        modelNumber = findLabeledValue(lines, MODEL_NUMBER_KEYWORDS)
+        modelNumber = findLabeledValue(lines, MODEL_NUMBER_KEYWORDS),
+        retailer = findRetailer(lines, rawText),
+        invoiceNumber = findLabeledValue(lines, INVOICE_NUMBER_KEYWORDS),
+        referenceNumber = findLabeledValue(lines, REFERENCE_NUMBER_KEYWORDS)
     )
 }
 
-private fun findVendor(rawText: String): String? =
-    KNOWN_VENDORS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
+private fun findVendor(lines: List<String>, rawText: String): String? =
+    findVendorFromLabel(lines)
+        ?: KNOWN_VENDORS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
+
+private fun findVendorFromLabel(lines: List<String>): String? {
+    val raw = findLabeledValue(lines, VENDOR_LABEL_KEYWORDS) ?: return null
+    val cutAt = VENDOR_TRAILING_MARKERS
+        .mapNotNull { marker -> raw.indexOf(marker, ignoreCase = true).takeIf { it >= 0 } }
+        .minOrNull()
+    val cleaned = if (cutAt != null) raw.substring(0, cutAt) else raw
+    return cleaned.trim(',', '|', ' ', '-').takeIf { it.length >= 2 }
+}
+
+private fun findRetailer(lines: List<String>, rawText: String): String? =
+    findLabeledValue(lines, RETAILER_KEYWORDS)
+        ?: KNOWN_RETAILERS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
 
 private fun findDate(lines: List<String>): LocalDate? {
     // Pass 1: a date on a line explicitly labeled as THE date (and not
