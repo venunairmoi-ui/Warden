@@ -343,6 +343,24 @@ android {
         versionCode = 46
         versionName = "0.15.6-dashboard-splash-icon-fix"
 
+        // 0.15.7-one-splash: 2026-09-13 -- "why is there two launch
+        // screens." Every cold start showed the platform SplashScreen API's
+        // own branded moment (real app icon on brand-blue, held >=200ms --
+        // MainActivity.installSplashScreen + themes.xml's
+        // Theme.Warden.Splash) immediately followed by this app's own
+        // separate Compose SplashScreen (gradient + shield glyph +
+        // wordmark + tagline, held 600ms) -- two brand screens back to
+        // back, each with a different treatment of the icon. Removed the
+        // Compose screen from the nav graph entirely (WardenNavHost always
+        // starts at Home/Onboarding now; deep-link/share hand-offs are
+        // unaffected, they already skipped it) and deleted
+        // ui/splash/SplashScreen.kt + its dedicated ic_wisma_splash_mark
+        // asset as dead code. One splash now -- the system one -- and it
+        // already shows the real app icon from 0.15.5's launcher fix, no
+        // new asset needed.
+        versionCode = 47
+        versionName = "0.15.7-one-splash"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

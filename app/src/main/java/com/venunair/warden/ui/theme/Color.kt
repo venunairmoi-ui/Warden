@@ -84,9 +84,12 @@ val WardenOutlineVariantDark = Color(0xFF434656)
 // Splash screen pass (2026-08-25): a 3rd extended tonal role, wired for the
 // exact reason the comment above invites -- the splash's mockup
 // (wisma_login/code.html, the closest thing this app has to a splash
-// mockup; see SplashScreen.kt's doc comment) specifically calls for a
-// `background -> surface-container-high` gradient. DIRECT from that same
-// mockup's tailwind config (#272a2c), transcribed rather than invented.
+// mockup) specifically called for a `background -> surface-container-high`
+// gradient. DIRECT from that same mockup's tailwind config (#272a2c),
+// transcribed rather than invented. The Compose splash screen that
+// motivated this was removed in 0.15.7 (see WardenNavHost's doc comment),
+// but surfaceContainerHigh is a standard M3 role now wired into the theme
+// regardless -- left in place rather than unwound.
 val WardenSurfaceContainerHighDark = Color(0xFF272A2C)
 
 // Feedback pass (2026-08-25): a 4th extended tonal role, wired for the same

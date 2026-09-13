@@ -1,13 +1,6 @@
 <resources>
     <string name="app_name">Wisma</string>
 
-    <!-- Splash screen (UI redesign pass, 2026-08-25) — the tagline
-         deliberately reuses onboarding's own headline copy rather than
-         inventing new brand voice, and instead of wisma_login/code.html's
-         original "Secure Access to Your Products" line, which is login-form
-         copy this app has no login to back up (no accounts, no auth). -->
-    <string name="splash_tagline">@string/onboarding_page1_headline</string>
-
     <!-- Home screen -->
     <string name="home_title">Wisma</string>
     <string name="add_button">Add</string>

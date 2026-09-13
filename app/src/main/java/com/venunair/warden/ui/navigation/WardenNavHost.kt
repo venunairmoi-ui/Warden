@@ -30,11 +30,9 @@ import com.venunair.warden.ui.itemdetail.ItemDetailScreen
 import com.venunair.warden.ui.onboarding.OnboardingScreen
 import com.venunair.warden.ui.settings.SettingsScreen
 import com.venunair.warden.ui.common.LocalRegion
-import com.venunair.warden.ui.splash.SplashScreen
 import kotlinx.coroutines.launch
 
 sealed class WardenDestination(val route: String) {
-    data object Splash : WardenDestination("splash")
     data object Onboarding : WardenDestination("onboarding")
     // Overview screen pass, 2026-08-25: "home" now points at OverviewScreen
     // (the new landing screen) instead of the item list -- unchanged route
@@ -154,15 +152,19 @@ fun WardenNavHost(
         }
     }
 
-    // UI redesign pass, 2026-08-25: the new brand Splash screen is the
-    // normal cold-start destination, EXCEPT when this cold start is itself
-    // a deep link / share hand-off (a notification tap while the app was
-    // fully closed, so onCreate ran fresh) -- that path should land the
-    // user on their target screen immediately, not detour through a ~600ms
-    // brand moment first. Read once here (deepLinkTarget/pendingShare are
-    // already resolved synchronously in MainActivity.onCreate before
-    // setContent runs, so there's no race with the LaunchedEffects below).
-    val skipSplash = deepLinkTarget != null || pendingShare != null
+    // 0.15.7: the separate Compose Splash screen (brand gradient + shield
+    // glyph + wordmark + tagline, held ~600ms) was removed -- "why is there
+    // two launch screens" (2026-09-13): the platform/backport SplashScreen
+    // API (see MainActivity.installSplashScreen + themes.xml's
+    // Theme.Warden.Splash) already shows a branded moment of its own
+    // (the real app icon on the brand-blue background, held for a minimum
+    // 200ms) before this NavHost's first composition ever runs, so the two
+    // screens back-to-back read as one launch stuttering into another
+    // rather than a single moment. One splash now, not two, and it's the
+    // real app icon. realStartDestination is therefore always where a cold
+    // start lands -- deep link/share hand-offs (see the LaunchedEffects
+    // above) still work exactly as before, they just no longer needed a
+    // *separate* skip case now that there's nothing to skip past.
     val realStartDestination = if (startAtOnboarding) WardenDestination.Onboarding.route else WardenDestination.Home.route
 
     // Sprint (international-formatting pass, 2026-09-01): provide the
@@ -173,7 +175,7 @@ fun WardenNavHost(
     CompositionLocalProvider(LocalRegion provides preferences.region) {
     NavHost(
         navController = navController,
-        startDestination = if (skipSplash) realStartDestination else WardenDestination.Splash.route,
+        startDestination = realStartDestination,
         // Default transitions for all destinations: horizontal slide
         // (forward = right-to-left, back = left-to-right) with a subtle
         // fade so the transition doesn't jump harshly at the edges.
@@ -202,15 +204,6 @@ fun WardenNavHost(
             ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION))
         }
     ) {
-        composable(WardenDestination.Splash.route) {
-            SplashScreen(
-                onFinished = {
-                    navController.navigate(realStartDestination) {
-                        popUpTo(WardenDestination.Splash.route) { inclusive = true }
-                    }
-                }
-            )
-        }
         composable(WardenDestination.Onboarding.route) {
             OnboardingScreen(
                 onFinished = {
