@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>WISMA - Product Details</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@500&amp;family=Sora:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "primary-container": "#0052ff",
+                "surface-container-low": "#191c1e",
+                "surface-container-highest": "#323537",
+                "error": "#ffb4ab",
+                "error-container": "#93000a",
+                "on-secondary-container": "#abb9d6",
+                "on-tertiary": "#20304f",
+                "primary-fixed-dim": "#b7c4ff",
+                "on-error": "#690005",
+                "on-primary-container": "#dfe3ff",
+                "outline": "#8d90a2",
+                "secondary-container": "#3c4962",
+                "secondary-fixed": "#d6e3ff",
+                "surface-container-high": "#272a2c",
+                "tertiary-container": "#566688",
+                "on-error-container": "#ffdad6",
+                "outline-variant": "#434656",
+                "on-background": "#e0e3e5",
+                "on-secondary": "#233148",
+                "on-primary-fixed": "#001452",
+                "secondary": "#b9c7e4",
+                "secondary-fixed-dim": "#b9c7e4",
+                "on-secondary-fixed-variant": "#39475f",
+                "inverse-primary": "#004ced",
+                "surface-container-lowest": "#0b0f10",
+                "inverse-on-surface": "#2d3133",
+                "inverse-surface": "#e0e3e5",
+                "on-tertiary-container": "#dbe4ff",
+                "on-tertiary-fixed": "#091b39",
+                "tertiary-fixed": "#d8e2ff",
+                "on-tertiary-fixed-variant": "#374767",
+                "surface-container": "#1d2022",
+                "background": "#101415",
+                "on-primary-fixed-variant": "#0038b6",
+                "surface-bright": "#363a3b",
+                "primary": "#b7c4ff",
+                "on-secondary-fixed": "#0d1c32",
+                "on-surface": "#e0e3e5",
+                "on-surface-variant": "#c3c5d9",
+                "tertiary-fixed-dim": "#b6c6ed",
+                "surface-variant": "#323537",
+                "surface-dim": "#101415",
+                "primary-fixed": "#dde1ff",
+                "on-primary": "#002682",
+                "tertiary": "#b6c6ed",
+                "surface-tint": "#b7c4ff",
+                "surface": "#101415"
+        },
+        "borderRadius": {
+                "DEFAULT": "1rem",
+                "lg": "2rem",
+                "xl": "3rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "sm": "8px",
+                "unit": "4px",
+                "lg": "24px",
+                "md": "16px",
+                "margin-mobile": "16px",
+                "gutter": "20px",
+                "xl": "40px",
+                "margin-desktop": "64px",
+                "xs": "4px"
+        },
+        "fontFamily": {
+                "headline-lg": [
+                        "Sora"
+                ],
+                "display-xl": [
+                        "Sora"
+                ],
+                "label-sm": [
+                        "Geist Mono"
+                ],
+                "body-lg": [
+                        "Geist"
+                ],
+                "headline-md": [
+                        "Sora"
+                ],
+                "body-md": [
+                        "Geist"
+                ],
+                "headline-lg-mobile": [
+                        "Sora"
+                ]
+        },
+        "fontSize": {
+                "headline-lg": [
+                        "32px",
+                        {
+                                "lineHeight": "1.2",
+                                "fontWeight": "600"
+                        }
+                ],
+                "display-xl": [
+                        "48px",
+                        {
+                                "lineHeight": "1.1",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "700"
+                        }
+                ],
+                "label-sm": [
+                        "12px",
+                        {
+                                "lineHeight": "1.4",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "1.6",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-md": [
+                        "24px",
+                        {
+                                "lineHeight": "1.3",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "1.5",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-lg-mobile": [
+                        "28px",
+                        {
+                                "lineHeight": "1.2",
+                                "fontWeight": "600"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        body { background-color: #101415; color: #e0e3e5; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col">
+<!-- Top Navigation (Task-Focused Context) -->
+<header class="w-full top-0 sticky bg-background border-b border-outline-variant z-40">
+<div class="flex justify-between items-center px-gutter h-16 w-full max-w-screen-xl mx-auto">
+<div class="flex items-center gap-md">
+<button aria-label="Go back" class="p-2 hover:bg-surface-container transition-colors duration-100 ease-linear rounded-full">
+<span class="material-symbols-outlined text-on-surface">arrow_back</span>
+</button>
+</div>
+<div class="flex items-center gap-md">
+<button aria-label="Edit" class="p-2 hover:bg-surface-container transition-colors duration-100 ease-linear rounded-full">
+<span class="material-symbols-outlined text-outline hover:text-on-surface">edit</span>
+</button>
+<button aria-label="Archive" class="p-2 hover:bg-surface-container transition-colors duration-100 ease-linear rounded-full">
+<span class="material-symbols-outlined text-[#FFB800]">archive</span>
+</button>
+<button aria-label="Delete" class="p-2 hover:bg-surface-container transition-colors duration-100 ease-linear rounded-full">
+<span class="material-symbols-outlined text-error">delete</span>
+</button>
+</div>
+</div>
+</header>
+<main class="flex-1 w-full max-w-screen-md mx-auto px-margin-mobile md:px-margin-desktop py-lg flex flex-col gap-lg pb-32">
+<!-- Hero Card -->
+<section class="bg-surface-container border border-outline-variant p-lg flex flex-col items-center text-center relative overflow-hidden rounded-xl">
+<div class="absolute left-0 top-0 bottom-0 w-[4px] bg-primary-container rounded-l-xl"></div>
+<div class="mb-md">
+<span class="font-label-sm text-label-sm text-primary-container bg-primary-container/10 px-3 py-1.5 uppercase tracking-wider rounded-full">Electronics</span>
+</div>
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-sm">LG Monitor</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-lg">LG</p>
+<div class="flex items-center gap-2 bg-[#00FF41]/10 px-3 py-1.5 border border-[#00FF41]/30 mb-sm rounded-full">
+<div class="w-2 h-2 rounded-full bg-[#00FF41]"></div>
+<span class="font-label-sm text-label-sm text-[#00FF41] uppercase tracking-widest">ACTIVE</span>
+</div>
+<p class="font-body-md text-body-md text-outline mt-sm">337 days left on warranty</p>
+</section>
+<!-- Warranty Timeline -->
+<section class="bg-surface-container border border-outline-variant p-md rounded-xl">
+<h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-md">Warranty Timeline</h2>
+<div class="relative pl-4">
+<div class="absolute left-[23px] top-[30px] bottom-[30px] w-px bg-outline-variant"></div>
+<div class="flex gap-md mb-lg relative z-10">
+<div class="w-12 h-12 bg-surface-container-low flex items-center justify-center border border-outline-variant text-primary-container flex-shrink-0 rounded-full">
+<span class="material-symbols-outlined">calendar_month</span>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-body-md text-body-md text-on-surface-variant">Purchased On</span>
+<span class="font-headline-md text-headline-md text-on-surface">March 3, 2026</span>
+</div>
+</div>
+<div class="flex gap-md relative z-10">
+<div class="w-12 h-12 bg-surface-container-low flex items-center justify-center border border-outline-variant text-primary-container flex-shrink-0 rounded-full">
+<span class="material-symbols-outlined">schedule</span>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-body-md text-body-md text-on-surface-variant">Expires On</span>
+<span class="font-headline-md text-headline-md text-on-surface">March 3, 2027</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Invoice Preview -->
+<section class="bg-surface-container border border-outline-variant p-md rounded-xl">
+<h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-md">Invoice Available</h2>
+<div class="flex items-center justify-between bg-surface-container-low border border-outline-variant p-sm hover:bg-surface-container-high transition-colors rounded-lg">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 bg-surface-container-highest flex items-center justify-center border border-outline-variant text-primary-container rounded-lg">
+<span class="material-symbols-outlined">image</span>
+</div>
+<div>
+<div class="font-body-md text-body-md text-on-surface font-medium truncate w-32 md:w-48">invoice_102934.jpg</div>
+<div class="font-label-sm text-label-sm text-outline mt-1">image/jpeg</div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button aria-label="View Invoice" class="p-2 text-primary-container hover:bg-surface-container-highest transition-colors rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">visibility</span>
+</button>
+<button aria-label="Share Invoice" class="p-2 text-primary-container hover:bg-surface-container-highest transition-colors rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">share</span>
+</button>
+<button aria-label="Delete Invoice" class="p-2 text-error hover:bg-surface-container-highest transition-colors rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">delete</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Reminders -->
+<section class="bg-surface-container border border-outline-variant p-md rounded-xl">
+<div class="flex justify-between items-center mb-md">
+<h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Reminders</h2>
+<div class="flex gap-2">
+<button class="font-label-sm text-label-sm text-outline hover:text-on-surface px-2">+30d</button>
+<button class="font-label-sm text-label-sm text-outline hover:text-on-surface px-2">+10d</button>
+<button class="font-label-sm text-label-sm text-outline hover:text-on-surface px-2">+3d</button>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-2 mb-md">
+<div class="flex items-center gap-1 bg-primary-container/10 border border-primary-container/30 px-3 py-1.5 text-primary-fixed-dim rounded-full">
+<span class="material-symbols-outlined text-[16px]">notifications</span>
+<span class="font-body-md text-body-md">10 days</span>
+<button class="ml-1 hover:text-on-surface"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</div>
+<span class="font-body-md text-body-md text-outline">and</span>
+<div class="flex items-center gap-1 bg-primary-container/10 border border-primary-container/30 px-3 py-1.5 text-primary-fixed-dim rounded-full">
+<span class="material-symbols-outlined text-[16px]">notifications</span>
+<span class="font-body-md text-body-md">30 days</span>
+<button class="ml-1 hover:text-on-surface"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</div>
+</div>
+<p class="font-body-md text-body-md text-outline mb-md">before warranty expiry</p>
+<div class="flex border border-outline-variant bg-surface-container-low rounded-lg overflow-hidden">
+<input class="bg-transparent border-none text-on-surface font-body-md w-full px-3 py-2 focus:ring-0 focus:outline-none placeholder:text-on-surface-variant" placeholder="Enter days before expiry" type="number"/>
+<button class="flex items-center gap-1 text-primary-container font-label-sm text-label-sm px-4 border-l border-outline-variant hover:bg-surface-container transition-colors uppercase">
+<span class="material-symbols-outlined text-[16px]">add</span> ADD
+                </button>
+</div>
+</section>
+<!-- Additional Details -->
+<section class="bg-surface-container border border-outline-variant p-md mb-8 rounded-xl">
+<h2 class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mb-md">Additional Details</h2>
+<div class="flex flex-col gap-1">
+<span class="font-body-md text-body-md text-outline">Seller / Store</span>
+<span class="font-headline-md text-headline-md text-on-surface">Amazon</span>
+</div>
+</section>
+</main>
+<!-- Suppressed Bottom Navigation: Not a top-level destination -->
+</body></html>

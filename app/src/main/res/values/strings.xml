@@ -172,6 +172,8 @@
     <string name="settings_auto_detect_permission_title">Allow photo access?</string>
     <string name="settings_auto_detect_permission_body">Auto-detect needs permission to look at your photos so it can suggest ones that look like receipts or warranty cards. Wisma never uploads your photos anywhere, and nothing is added to your items without your confirmation.</string>
     <string name="settings_theme">Theme</string>
+    <string name="settings_region">Region</string>
+    <string name="settings_region_body">Changes how currency and dates are displayed. Doesn\'t translate the app or affect scan/attach auto-fill, which is still tuned for Indian receipts.</string>
     <string name="settings_data">Data</string>
     <string name="settings_archived_items">Archived items</string>
     <string name="settings_archived_items_body">Restore or permanently delete items you\'ve archived</string>

@@ -48,9 +48,10 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
         _selectedLocation.value = location
     }
 
-    // Feedback, 2026-08-25: the "At risk this month" and "Monthly
-    // subscriptions" summary cards on the Dashboard are now tappable quick
-    // filters, alongside the category/location chips above. A separate
+    // Feedback, 2026-08-25: the "At risk this month" and "Recurring costs"
+    // (renamed 2026-09-01, was "Monthly subscriptions") summary cards on the
+    // Dashboard are now tappable quick filters, alongside the category/
+    // location chips above. A separate
     // enum (not reusing ItemCategory) because neither tier maps to a single
     // category value -- AT_RISK is a date-window cut across every category,
     // and SUBSCRIPTIONS matches Item.isRecurringPayment (any item with a
@@ -232,11 +233,26 @@ data class GroupedItems(
 data class HomeSummary(
     /** Sum of cost for items expiring within 30 days. */
     val moneyAtRisk: Double = 0.0,
-    /** Sum of subscription billingAmount normalised to monthly. */
-    val monthlySubscriptions: Double = 0.0,
+    /** Sum of every recurring item's billingAmount normalised to monthly,
+     *  across ALL categories (Subscription, AMC, Insurance, Membership --
+     *  anything with a billing cycle + amount set, per Item.isRecurringPayment).
+     *  This is the headline number on the Dashboard's "Recurring costs"
+     *  card; see [recurringByCategory] for what it's actually made of. */
+    val totalRecurringMonthly: Double = 0.0,
+    /** Same total, split by category -- e.g. {SUBSCRIPTION: 499.0, AMC:
+     *  300.0}. Feedback, 2026-09-01: a single blended "Monthly
+     *  subscriptions" figure that silently absorbed AMC/Insurance/
+     *  Membership billing data (because isRecurringPayment is deliberately
+     *  category-agnostic, see that property's own doc comment) read to
+     *  users as "just my subscriptions" and confused anyone with a billed
+     *  AMC contract. This breakdown is what lets the UI show the total
+     *  AND what it's composed of in the same glance, instead of relabelling
+     *  the number without disclosing its scope. Only categories with a
+     *  non-zero recurring total are present; empty when there are none. */
+    val recurringByCategory: Map<ItemCategory, Double> = emptyMap(),
     /** Number of items expiring within 30 days. */
     val expiringCount: Int = 0,
-    /** Total active subscriptions. */
+    /** Total items counted in totalRecurringMonthly, across all categories. */
     val subscriptionCount: Int = 0
 )
 
@@ -282,14 +298,20 @@ private fun computeSummary(items: List<Item>): HomeSummary {
         d in 0..30
     }
     val subscriptions = items.filter { it.isRecurringPayment }
+    fun monthlyAmountOf(item: Item): Double {
+        val amount = item.billingAmount ?: 0.0
+        val factor = item.billingCycle?.toMonthlyFactor() ?: 0.0
+        return amount * factor
+    }
+    val recurringByCategory = subscriptions
+        .groupBy { it.category }
+        .mapValues { (_, categoryItems) -> categoryItems.sumOf(::monthlyAmountOf) }
+        .filterValues { it > 0.0 }
 
     return HomeSummary(
         moneyAtRisk = expiringItems.mapNotNull { it.cost }.sum(),
-        monthlySubscriptions = subscriptions.sumOf { item ->
-            val amount = item.billingAmount ?: 0.0
-            val factor = item.billingCycle?.toMonthlyFactor() ?: 0.0
-            amount * factor
-        },
+        totalRecurringMonthly = subscriptions.sumOf(::monthlyAmountOf),
+        recurringByCategory = recurringByCategory,
         expiringCount = expiringItems.size,
         subscriptionCount = subscriptions.size
     )

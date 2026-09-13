@@ -47,19 +47,24 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.StickyNote2
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -111,20 +116,25 @@ import com.venunair.warden.data.AttachmentSource
 import com.venunair.warden.data.Item
 import com.venunair.warden.data.ItemCategory
 import com.venunair.warden.data.ItemRepository
+import com.venunair.warden.data.Region
 import com.venunair.warden.data.computeAmcServiceStatus
 import com.venunair.warden.data.ServiceEvent
 import com.venunair.warden.data.costLabel
+import com.venunair.warden.data.billingAmountLabel
+import com.venunair.warden.data.billingCycleLabel
+import com.venunair.warden.data.planTierLabel
 import com.venunair.warden.data.referenceNumberLabel
 import com.venunair.warden.ocr.recognizeText
 import com.venunair.warden.pdf.PdfPageRenderer
 import com.venunair.warden.ui.attachment.AttachmentThumbnailRow
 import com.venunair.warden.ui.attachment.AttachmentViewerDialog
+import com.venunair.warden.ui.common.LocalRegion
 import com.venunair.warden.ui.common.categoryIcon
 import com.venunair.warden.ui.common.decodeBitmapForOcr
-import com.venunair.warden.ui.common.toIndianCurrencyString
-import com.venunair.warden.ui.common.toIndianCurrencyStringOrDash
-import com.venunair.warden.ui.common.toIndianDateString
-import com.venunair.warden.ui.common.toIndianDateStringOrDash
+import com.venunair.warden.ui.common.toCurrencyString
+import com.venunair.warden.ui.common.toCurrencyStringOrDash
+import com.venunair.warden.ui.common.toDateString
+import com.venunair.warden.ui.common.toDateStringOrDash
 import com.venunair.warden.ui.common.toLocalDateFromUtcMillis
 import com.venunair.warden.ui.common.toUtcMillis
 import com.venunair.warden.ui.theme.ItemUrgency
@@ -352,32 +362,53 @@ private fun ItemDetailContent(item: Item, repository: ItemRepository, modifier: 
             TimelineRow(
                 icon = Icons.Filled.CalendarToday,
                 label = "Purchased on",
-                value = item.purchaseDate.toIndianDateStringOrDash(),
+                value = item.purchaseDate.toDateStringOrDash(),
                 isLast = false
             )
             TimelineRow(
                 icon = Icons.Filled.Timeline,
                 label = "Expires on",
-                value = item.expiryDate.toIndianDateStringOrDash(),
+                value = item.expiryDate.toDateStringOrDash(),
                 isLast = true
             )
         }
 
         // ── Remaining fields ──────────────────────────────────────
+        // Bug fix, 2026-09-01: "when I select Insurance, product details
+        // still appear (serial number, model number, retailer, invoice
+        // number)". Product-only fields never apply to Insurance or
+        // Membership (see AddEditItemScreen's matching fix) -- gated here
+        // too, defensively, so an item already saved with stray Product
+        // data from before that fix (or the "Product or service" row
+        // itself, always "Service" for these two categories anyway once
+        // the form-side fix takes effect) stops showing it on re-open
+        // without requiring the user to re-edit and re-save every such item.
+        val showProductFields = item.category != ItemCategory.INSURANCE && item.category != ItemCategory.MEMBERSHIP
         val rows = buildList {
-            add(DetailRowData(Icons.Filled.Category, "Product or service", item.itemType.displayName))
-            add(DetailRowData(Icons.Filled.Payments, item.category.costLabel(), item.cost.toIndianCurrencyStringOrDash()))
+            if (showProductFields) {
+                add(DetailRowData(Icons.Filled.Category, "Product or service", item.itemType.displayName))
+            }
+            add(DetailRowData(Icons.Filled.Payments, item.category.costLabel(), item.cost.toCurrencyStringOrDash()))
             add(DetailRowData(Icons.Filled.Numbers, item.category.referenceNumberLabel(), item.amcNumber ?: "—"))
             item.visitsIncluded?.let { add(DetailRowData(Icons.Filled.CheckCircle, "Visits included per year", it.toString())) }
 
             item.location?.let { add(DetailRowData(Icons.Filled.LocationOn, "Location", it)) }
-            item.serialNumber?.let { add(DetailRowData(Icons.Filled.QrCode, "Serial number", it)) }
-            item.modelNumber?.let { add(DetailRowData(Icons.Filled.Numbers, "Model number", it)) }
-            item.retailer?.let { add(DetailRowData(Icons.Filled.Store, "Retailer", it)) }
-            item.invoiceNumber?.let { add(DetailRowData(Icons.Filled.Receipt, "Invoice number", it)) }
-            item.billingCycle?.let { add(DetailRowData(Icons.Filled.Repeat, "Billing cycle", it.displayName)) }
-            item.billingAmount?.let { add(DetailRowData(Icons.Filled.Payments, "Billing amount", it.toIndianCurrencyStringOrDash())) }
+            if (showProductFields) {
+                item.serialNumber?.let { add(DetailRowData(Icons.Filled.QrCode, "Serial number", it)) }
+                item.modelNumber?.let { add(DetailRowData(Icons.Filled.Numbers, "Model number", it)) }
+                item.retailer?.let { add(DetailRowData(Icons.Filled.Store, "Retailer", it)) }
+                item.invoiceNumber?.let { add(DetailRowData(Icons.Filled.Receipt, "Invoice number", it)) }
+            }
+            item.billingCycle?.let { add(DetailRowData(Icons.Filled.Repeat, item.category.billingCycleLabel(), it.displayName)) }
+            item.billingAmount?.let { add(DetailRowData(Icons.Filled.Payments, item.category.billingAmountLabel(), it.toCurrencyStringOrDash())) }
             if (item.autoRenew) add(DetailRowData(Icons.Filled.Repeat, "Auto-renews", "Yes"))
+
+            // Category-specific fields pass, 2026-08-30
+            item.warrantyType?.let { add(DetailRowData(Icons.Filled.VerifiedUser, "Warranty type", it.displayName)) }
+            item.nomineeName?.let { add(DetailRowData(Icons.Filled.Person, "Nominee", it)) }
+            item.serviceProviderContact?.let { add(DetailRowData(Icons.Filled.SupportAgent, "Service provider contact", it)) }
+            item.planTier?.let { add(DetailRowData(Icons.Filled.Star, item.category.planTierLabel(), it)) }
+            item.membersCovered?.let { add(DetailRowData(Icons.Filled.Group, "Members covered", it.toString())) }
 
             add(DetailRowData(Icons.Filled.StickyNote2, "Notes", item.notes ?: "—"))
         }
@@ -440,7 +471,7 @@ private fun ItemDetailContent(item: Item, repository: ItemRepository, modifier: 
                         when {
                             amcStatus.remaining <= 0 -> "All included services used for this period"
                             amcStatus.nextExpectedDate != null ->
-                                "Next service expected around ${amcStatus.nextExpectedDate.toIndianDateString()}"
+                                "Next service expected around ${amcStatus.nextExpectedDate.toDateString()}"
                             else ->
                                 "${amcStatus.remaining} service${if (amcStatus.remaining != 1) "s" else ""} remaining this period"
                         },
@@ -470,7 +501,7 @@ private fun ItemDetailContent(item: Item, repository: ItemRepository, modifier: 
                 val daysSinceLastService = ChronoUnit.DAYS.between(lastServiceDate, LocalDate.now())
                 Text(
                     "Serviced ${serviceEvents.size} time${if (serviceEvents.size != 1) "s" else ""} — " +
-                        "last on ${lastServiceDate.toIndianDateString()} " +
+                        "last on ${lastServiceDate.toDateString()} " +
                         "($daysSinceLastService day${if (daysSinceLastService != 1L) "s" else ""} ago)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -720,7 +751,7 @@ private fun ServiceDateField(
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
-            value = date.toIndianDateString(),
+            value = date.toDateString(),
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
@@ -762,12 +793,12 @@ private fun TcoCostCard(item: Item, serviceEvents: List<ServiceEvent>) {
             Spacer(Modifier.height(12.dp))
 
             if (purchaseCost > 0.0) {
-                TcoRow("Purchase price", purchaseCost.toIndianCurrencyString())
+                TcoRow("Purchase price", purchaseCost.toCurrencyString())
             }
             if (serviceCosts > 0.0) {
                 TcoRow(
                     "Service costs (${serviceEvents.count { it.cost != null }} visit${if (serviceEvents.count { it.cost != null } != 1) "s" else ""})",
-                    serviceCosts.toIndianCurrencyString()
+                    serviceCosts.toCurrencyString()
                 )
             }
             if (purchaseCost > 0.0 && serviceCosts > 0.0) {
@@ -775,7 +806,7 @@ private fun TcoCostCard(item: Item, serviceEvents: List<ServiceEvent>) {
                     modifier = Modifier.padding(vertical = 8.dp),
                     color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
                 )
-                TcoRow("Total", totalCost.toIndianCurrencyString(), bold = true)
+                TcoRow("Total", totalCost.toCurrencyString(), bold = true)
             }
 
             // Per-year average if we know the purchase date
@@ -784,7 +815,7 @@ private fun TcoCostCard(item: Item, serviceEvents: List<ServiceEvent>) {
                 val perYear = totalCost / months * 12
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "≈ ${perYear.toIndianCurrencyString()} / year",
+                    "≈ ${perYear.toCurrencyString()} / year",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
                 )
@@ -853,7 +884,7 @@ private fun TimelineEntry(
         // Event content
         Column(modifier = Modifier.padding(start = 8.dp, bottom = if (isLast) 0.dp else 8.dp)) {
             Text(
-                event.date.toIndianDateString(),
+                event.date.toDateString(),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -862,7 +893,7 @@ private fun TimelineEntry(
             }
             event.cost?.let {
                 Text(
-                    it.toIndianCurrencyString(),
+                    it.toCurrencyString(),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
@@ -1113,7 +1144,7 @@ private fun ClaimInfoBottomSheet(
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState()
 
-    val claimText = buildClaimInfoText(item)
+    val claimText = buildClaimInfoText(item, LocalRegion.current)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1183,21 +1214,32 @@ private fun ClaimInfoBottomSheet(
     }
 }
 
-private fun buildClaimInfoText(item: Item): String = buildString {
+// Plain (non-@Composable) function -- called from ClaimInfoBottomSheet,
+// which is @Composable, but this itself isn't, so it can't read LocalRegion
+// directly. Takes region explicitly instead; see the region-parameterized
+// toCurrencyString(region)/toDateString(region) overloads in ui/common.
+private fun buildClaimInfoText(item: Item, region: Region): String = buildString {
     appendLine("Product: ${item.name}")
     item.vendor?.let { appendLine("Brand / Vendor: $it") }
     item.category.let { appendLine("Type: ${it.displayName}") }
     item.subCategory?.let { appendLine("Subcategory: $it") }
     appendLine("Product or service: ${item.itemType.displayName}")
-    appendLine("Expiry / Due: ${item.expiryDate.toIndianDateString()}")
-    item.purchaseDate?.let { appendLine("Purchased: ${it.toIndianDateString()}") }
+    appendLine("Expiry / Due: ${item.expiryDate.toDateString(region)}")
+    item.purchaseDate?.let { appendLine("Purchased: ${it.toDateString(region)}") }
     item.amcNumber?.let { appendLine("${item.category.referenceNumberLabel()}: $it") }
     item.serialNumber?.let { appendLine("Serial No: $it") }
     item.modelNumber?.let { appendLine("Model No: $it") }
     item.retailer?.let { appendLine("Retailer: $it") }
     item.invoiceNumber?.let { appendLine("Invoice No: $it") }
-    item.cost?.let { appendLine("${item.category.costLabel()}: ${it.toIndianCurrencyString()}") }
+    item.cost?.let { appendLine("${item.category.costLabel()}: ${it.toCurrencyString(region)}") }
     item.visitsIncluded?.let { appendLine("Visits included per year: $it") }
+    item.billingCycle?.let { appendLine("${item.category.billingCycleLabel()}: ${it.displayName}") }
+    item.billingAmount?.let { appendLine("${item.category.billingAmountLabel()}: ${it.toCurrencyString(region)}") }
+    item.warrantyType?.let { appendLine("Warranty type: ${it.displayName}") }
+    item.nomineeName?.let { appendLine("Nominee: $it") }
+    item.serviceProviderContact?.let { appendLine("Service provider contact: $it") }
+    item.planTier?.let { appendLine("${item.category.planTierLabel()}: $it") }
+    item.membersCovered?.let { appendLine("Members covered: $it") }
     item.location?.let { appendLine("Location: $it") }
     item.notes?.let { appendLine("Notes: $it") }
 }

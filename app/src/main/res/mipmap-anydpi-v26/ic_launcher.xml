@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Wisma adaptive icon (UI redesign pass, 2026-08-25). Foreground is now a
+<!-- Wisma adaptive icon, real app icon pass (2026-09-13). Foreground is a
      raster asset (@mipmap/ic_launcher_foreground, one PNG per density
-     bucket) rather than the placeholder vector shield — the real logo mark,
-     isolated to just the glyph (no wordmark; text doesn't survive the mask)
-     and extracted from the user-provided artwork via luminance-as-alpha
-     keying, sized to sit inside the adaptive-icon safe zone (~58% of the
-     108dp canvas, comfortably within the 66dp-diameter circle every launcher
-     mask guarantees stays visible). -->
+     bucket) generated from the user-provided "WISMA icon.png" artwork
+     (the 4-quadrant shield/wrench/document/person mark) — cropped to its
+     own white rounded-card bounds (trimmed the soft drop-shadow halo
+     around it), then scaled to 72% of the 108dp canvas and centered.
+     Background is solid white (@drawable/ic_launcher_background), matching
+     that card's own color, so the mask edge (circle/squircle/rounded-square
+     — varies by launcher) is invisible no matter what gets clipped.
+     Replaces the earlier placeholder glyph from the 2026-08-25 pass. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />

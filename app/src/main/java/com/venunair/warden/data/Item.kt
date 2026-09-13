@@ -112,8 +112,15 @@ fun ItemCategory.defaultItemType(): ItemType = when (this) {
 fun ItemCategory.referenceNumberLabel(): String = when (this) {
     ItemCategory.AMC -> "Contract number"
     ItemCategory.INSURANCE -> "Policy number"
-    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.MEMBERSHIP, ItemCategory.OTHER ->
-        "AMC / warranty / policy number"
+    // Category-specific fields pass, 2026-08-30: these three used to share
+    // one generic "AMC / warranty / policy number" label with each other
+    // (and with AMC/Insurance, before those two got their own line above) --
+    // the exact "same field, generic label" complaint this pass is fixing
+    // elsewhere. Each now reads as what it actually is.
+    ItemCategory.WARRANTY -> "Warranty number"
+    ItemCategory.SUBSCRIPTION -> "Subscription / account ID"
+    ItemCategory.MEMBERSHIP -> "Membership number"
+    ItemCategory.OTHER -> "Reference number"
 }
 
 /**
@@ -123,11 +130,30 @@ fun ItemCategory.referenceNumberLabel(): String = when (this) {
  * data back later could otherwise misread a coverage amount as what
  * they paid. Reuses the existing generic field rather than adding an
  * Insurance-only column, same reasoning as [referenceNumberLabel].
+ *
+ * Feedback, 2026-09-01: "When I add an item under AMC, I see a cost and
+ * a billing amount per cycle... What is the cost? If that is the
+ * purchase price, label it as such." Every category except Insurance
+ * used to share one generic "Cost" label here, with no hint of what it
+ * meant -- confusing specifically wherever a category ALSO shows the
+ * Billing section (AMC, Subscription, Membership, Other all do; see
+ * AddEditItemScreen's showBilling), since two unlabelled money fields
+ * sit right next to each other. This field genuinely IS a purchase
+ * price everywhere it isn't Insurance or Membership -- confirmed by
+ * ItemDetailScreen's own TCO section, which already calls this exact
+ * field "Purchase price" (purchaseCost = item.cost) regardless of
+ * category; this label was simply out of sync with that. AMC's case
+ * specifically: it's the purchase price of the item UNDER the AMC
+ * contract (e.g. the AC or RO purifier), not the AMC contract's own
+ * cost -- that's Billing amount per cycle, a separate field entirely.
+ * Membership gets its own wording ("Enrollment / joining fee") rather
+ * than "Purchase price" since nobody "purchases" a club membership --
+ * same underlying column, clearer name for what it represents there.
  */
 fun ItemCategory.costLabel(): String = when (this) {
     ItemCategory.INSURANCE -> "Sum insured / coverage amount"
-    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.MEMBERSHIP, ItemCategory.OTHER ->
-        "Cost"
+    ItemCategory.MEMBERSHIP -> "Enrollment / joining fee"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.OTHER -> "Purchase price"
 }
 
 /** Billing recurrence for subscriptions and recurring service contracts. */
@@ -290,7 +316,121 @@ data class Item(
      * again with no explicit clear() step needed.
      */
     val serviceDueNotifiedForDate: LocalDate? = null,
+
+    // --- Category-specific fields addition (Room v10 → v11 migration) ---
+    // Feedback, 2026-08-30: "we use the same fields for all the items... but
+    // each has different features and their respective fields need to be
+    // shown" -- researched what Insurance/AMC/Warranty/Subscription/
+    // Membership trackers typically record and added the handful of fields
+    // that genuinely didn't exist yet (see each field's own doc comment for
+    // why it's scoped to one category). Deliberately followed the SAME
+    // reuse-with-a-category-aware-label pattern as [costLabel] and
+    // [referenceNumberLabel] above wherever the concept already existed --
+    // e.g. Insurance's "Premium paid" and "Premium frequency" are the
+    // existing billingAmount/billingCycle fields with new labels
+    // (billingAmountLabel/billingCycleLabel below), not new columns. Only
+    // truly new facts got a truly new column, to keep this table from
+    // growing one column per category per request.
+
+    /**
+     * Insurance-only: who the policy payout goes to. Never asked for
+     * elsewhere in the app (no category has an equivalent concept), so
+     * unlike cost/amcNumber this is a genuinely new column rather than a
+     * relabeled shared one.
+     */
+    val nomineeName: String? = null,
+
+    /**
+     * AMC-only: phone number or contact name for the vendor/technician who
+     * actually shows up for a service visit -- distinct from [vendor]
+     * (the contracting company), since in practice the person to call for
+     * "where's my technician" is often a direct line, not the company's
+     * general number. Free text rather than split phone/name fields --
+     * matches how [location] already handles a similarly free-form fact.
+     */
+    val serviceProviderContact: String? = null,
+
+    /**
+     * Warranty-only: who's actually on the hook for a claim -- the
+     * manufacturer, an extended-warranty provider (often a different
+     * company from who made the product), or the retailer/store. Real
+     * warranty-tracking tools treat this as a core field because it
+     * determines who you call, not just metadata.
+     */
+    val warrantyType: WarrantyType? = null,
+
+    /**
+     * Subscription: the plan name (e.g. "Family", "Premium", "Pro").
+     * Membership: the tier name (e.g. "Gold", "Individual"). Reused across
+     * both rather than two near-identical columns -- both are "which
+     * variant of this recurring thing did I sign up for", same as
+     * [costLabel] reuses one column across categories with different
+     * meanings. See [planTierLabel] for the category-aware label.
+     */
+    val planTier: String? = null,
+
+    /**
+     * Membership-only: how many people this membership covers (e.g. a
+     * family gym membership covering 4). Null/absent reads as "just me" --
+     * deliberately not defaulted to 1, so an unset value is visibly unset
+     * rather than indistinguishable from a real answer.
+     */
+    val membersCovered: Int? = null,
 )
+
+/**
+ * Warranty-only: who is actually responsible for honouring a claim. Kept
+ * as its own small enum (unlike planTier's free text) because there ARE
+ * only ever these three real answers in practice, and having them as fixed
+ * choices makes "who do I call" scannable at a glance rather than a pile of
+ * slightly-different free-text spellings ("Manufacturer" vs "Mfg" vs "OEM").
+ */
+enum class WarrantyType {
+    MANUFACTURER, EXTENDED, STORE;
+
+    val displayName: String
+        get() = when (this) {
+            MANUFACTURER -> "Manufacturer"
+            EXTENDED -> "Extended warranty"
+            STORE -> "Store / retailer"
+        }
+}
+
+/**
+ * Category-aware label for the shared "Billing" section's cycle/amount/
+ * section title -- Insurance's premium and Membership's fee are the exact
+ * same underlying fields ([Item.billingCycle]/[Item.billingAmount]) as a
+ * Subscription's billing, just called something else in real life. See
+ * [costLabel]'s doc comment for the same reasoning applied earlier.
+ */
+fun ItemCategory.billingSectionLabel(): String = when (this) {
+    ItemCategory.INSURANCE -> "Premium"
+    ItemCategory.MEMBERSHIP -> "Membership fee"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.OTHER -> "Billing"
+}
+
+fun ItemCategory.billingCycleLabel(): String = when (this) {
+    ItemCategory.INSURANCE -> "Premium frequency"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.MEMBERSHIP, ItemCategory.OTHER -> "Billing cycle"
+}
+
+fun ItemCategory.billingAmountLabel(): String = when (this) {
+    ItemCategory.INSURANCE -> "Premium paid"
+    ItemCategory.MEMBERSHIP -> "Membership fee amount"
+    ItemCategory.WARRANTY, ItemCategory.SUBSCRIPTION, ItemCategory.AMC, ItemCategory.OTHER -> "Billing amount per cycle"
+}
+
+/**
+ * Category-aware label for [Item.planTier]. Subscription and Membership
+ * are the only categories that show this field at all (see
+ * AddEditItemScreen's AnimatedVisibility gate) -- the other branches exist
+ * only so the `when` stays exhaustive if a caller ever asks for one anyway.
+ */
+fun ItemCategory.planTierLabel(): String = when (this) {
+    ItemCategory.SUBSCRIPTION -> "Plan / tier"
+    ItemCategory.MEMBERSHIP -> "Membership tier"
+    ItemCategory.WARRANTY, ItemCategory.AMC, ItemCategory.INSURANCE, ItemCategory.OTHER -> "Plan / tier"
+}
 
 /**
  * Retaxonomy follow-up, 2026-08-25: single definition of "this item has a

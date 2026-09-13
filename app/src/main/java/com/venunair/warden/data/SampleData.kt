@@ -3,10 +3,14 @@ package com.venunair.warden.data
 import java.time.LocalDate
 
 /**
- * Dev/testing aid -- no longer wired to any button (the "Load sample data"
- * debug menu item was removed, feedback 2026-08-25); kept as a callable
- * function in case it's reconnected later, and updated here purely to
- * stay compilable against the retaxonomy (was WARRANTY/AMC/SUBSCRIPTION/
+ * Dev/testing aid. Was wired to a "Load sample data" debug menu item,
+ * removed 2026-08-25 (that day's feedback), kept as a callable function in
+ * case it was reconnected later -- it was: re-added 2026-09-01 as "Add test
+ * records" in OverviewScreen's debug menu ("The check reminders and Add
+ * test records are both missing. It needs to be built back"), and that
+ * whole menu is now shown unconditionally (not just in debug builds) so it
+ * reaches the same signed release APK testers install. Updated here purely
+ * to stay compilable against the retaxonomy (was WARRANTY/AMC/SUBSCRIPTION/
  * DOCUMENT/VEHICLE/HOME/OFFICE/FINANCIAL; now WARRANTY/INSURANCE/
  * SUBSCRIPTION/AMC/MEMBERSHIP/OTHER, each with its own subCategory).
  *
@@ -45,6 +49,7 @@ suspend fun ItemRepository.seedSampleData() {
             modelNumber = "GL-T292RPZX",
             retailer = "Croma, Indiranagar",
             invoiceNumber = "CRM-BLR-88432",
+            warrantyType = WarrantyType.EXTENDED,
             location = "Home",
             notes = "Extended warranty card is in the box with the manual."
         ),
@@ -60,6 +65,7 @@ suspend fun ItemRepository.seedSampleData() {
             modelNumber = "CPH2583",
             retailer = "Amazon.in",
             invoiceNumber = "AMZ-408-2847193",
+            warrantyType = WarrantyType.MANUFACTURER,
             location = "Home",
             notes = "1-year manufacturer warranty plus a 6-month extension."
         ),
@@ -77,6 +83,7 @@ suspend fun ItemRepository.seedSampleData() {
             billingCycle = BillingCycle.ANNUAL,
             billingAmount = 3500.0,
             visitsIncluded = 2,
+            serviceProviderContact = "Rajesh (technician) 98450-XXXXX",
             location = "Home",
             notes = "Annual comprehensive AMC, includes 2 free service visits."
         ),
@@ -117,7 +124,8 @@ suspend fun ItemRepository.seedSampleData() {
             cost = 4899.0,
             billingCycle = BillingCycle.ANNUAL,
             billingAmount = 4899.0,
-            autoRenew = true
+            autoRenew = true,
+            planTier = "Family (6 users)"
         ),
 
         // ── Insurance (new category) ─────────────────────────────────
@@ -130,6 +138,8 @@ suspend fun ItemRepository.seedSampleData() {
             expiryDate = today.minusDays(3),
             cost = 18500.0,
             amcNumber = "POL-2024-556621",
+            billingCycle = BillingCycle.ANNUAL,
+            billingAmount = 18500.0,
             notes = "Renew before the grace period ends."
         ),
         Item(
@@ -139,11 +149,12 @@ suspend fun ItemRepository.seedSampleData() {
             subCategory = "Health",
             purchaseDate = today.minusYears(2),
             expiryDate = today.plusYears(18),
-            cost = 14200.0,
+            cost = 10000000.0,
             amcNumber = "ICIPRU-TERM-2024-88312",
             billingCycle = BillingCycle.ANNUAL,
             billingAmount = 14200.0,
             autoRenew = true,
+            nomineeName = "Spouse",
             notes = "Sum assured ₹1 Cr. Premium due every July."
         ),
 
@@ -158,6 +169,8 @@ suspend fun ItemRepository.seedSampleData() {
             billingCycle = BillingCycle.ANNUAL,
             billingAmount = 12000.0,
             autoRenew = true,
+            planTier = "Gold",
+            membersCovered = 2,
             location = "Home"
         ),
 

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,6 +29,7 @@ import com.venunair.warden.ui.home.OverviewScreen
 import com.venunair.warden.ui.itemdetail.ItemDetailScreen
 import com.venunair.warden.ui.onboarding.OnboardingScreen
 import com.venunair.warden.ui.settings.SettingsScreen
+import com.venunair.warden.ui.common.LocalRegion
 import com.venunair.warden.ui.splash.SplashScreen
 import kotlinx.coroutines.launch
 
@@ -163,6 +165,12 @@ fun WardenNavHost(
     val skipSplash = deepLinkTarget != null || pendingShare != null
     val realStartDestination = if (startAtOnboarding) WardenDestination.Onboarding.route else WardenDestination.Home.route
 
+    // Sprint (international-formatting pass, 2026-09-01): provide the
+    // active display Region once here, for every screen in the graph, from
+    // the same `preferences` collection already read above -- see
+    // ui/common/LocalRegion.kt's doc comment for why this lives at the
+    // NavHost level rather than being threaded through each ViewModel.
+    CompositionLocalProvider(LocalRegion provides preferences.region) {
     NavHost(
         navController = navController,
         startDestination = if (skipSplash) realStartDestination else WardenDestination.Splash.route,
@@ -397,5 +405,6 @@ fun WardenNavHost(
                 onDeleted = { navController.popBackStack() }
             )
         }
+    }
     }
 }

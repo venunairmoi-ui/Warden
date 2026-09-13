@@ -32,4 +32,9 @@ class Converters {
 
     @TypeConverter fun fromBillingCycleName(value: String?): BillingCycle? = value?.let { BillingCycle.valueOf(it) }
     @TypeConverter fun billingCycleToName(cycle: BillingCycle?): String? = cycle?.name
+
+    // Category-specific fields pass: Warranty-only enum, same TEXT-affinity
+    // pattern as every other enum above.
+    @TypeConverter fun fromWarrantyTypeName(value: String?): WarrantyType? = value?.let { WarrantyType.valueOf(it) }
+    @TypeConverter fun warrantyTypeToName(warrantyType: WarrantyType?): String? = warrantyType?.name
 }

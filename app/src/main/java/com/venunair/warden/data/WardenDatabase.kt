@@ -25,7 +25,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     // 9 -> 10: AMC service-visit tracking follow-up -- Attachment.serviceEventId
     // added so a receipt can be attached when logging a service (see
     // MIGRATION_9_10 below).
-    version = 10,
+    // 10 -> 11: Category-specific fields -- Item.nomineeName (Insurance),
+    // serviceProviderContact (AMC), warrantyType (Warranty), planTier
+    // (Subscription/Membership), membersCovered (Membership) added (see
+    // MIGRATION_10_11 below).
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -228,6 +232,29 @@ abstract class WardenDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v10 → v11: category-specific fields.
+         *
+         * Feedback, 2026-08-30: "we use the same fields for all the items...
+         * each has different features and their respective fields need to
+         * be shown". Five new nullable columns, each scoped to exactly one
+         * category (see each field's doc comment on [Item]) -- plain ALTER
+         * TABLE ADD COLUMN, no new foreign keys, same safe shape as every
+         * migration since MIGRATION_9_10's crash-and-fix taught this
+         * codebase that lesson. No backfill needed: every existing row
+         * simply upgrades with these five as null, which reads correctly
+         * as "not recorded yet" for data that was never asked for before.
+         */
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN nomineeName TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN serviceProviderContact TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN warrantyType TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN planTier TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE items ADD COLUMN membersCovered INTEGER DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): WardenDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -235,7 +262,7 @@ abstract class WardenDatabase : RoomDatabase() {
                     WardenDatabase::class.java,
                     "warden.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // Destructive fallback only for pre-v4 databases (dev-era
                     // data before real migrations existed). Any v4+ database
                     // upgrades through the migration chain above.

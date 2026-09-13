@@ -1,10 +1,27 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+// Release signing, added 2026-08-27 for beta distribution to test users
+// ahead of Play Store go-live. Loaded from a local, git-ignored
+// keystore.properties at the project root (see .gitignore) -- the actual
+// keystore file and its passwords are never hardcoded here or checked
+// into version control. Guarded so the project still configures cleanly
+// on a machine that doesn't have keystore.properties (a fresh clone
+// before the keystore file has been copied over) -- the release build
+// type simply comes out unsigned in that case rather than failing the
+// whole Gradle sync.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -146,16 +163,193 @@ android {
         // in this pass -- it uses a dedicated full-screen route elsewhere
         // in this app that doesn't fit inside a modal dialog without a
         // larger navigation change. Room v9 -> v10.
-        versionCode = 35
-        versionName = "0.13.1-service-receipts"
+        // 0.14.0-category-fields: reported 2026-08-30 -- every category
+        // showed identical generic fields regardless of what it actually
+        // was. Added category-specific fields: Nominee (Insurance),
+        // Service provider contact (AMC), Warranty type (Warranty),
+        // Plan/tier (Subscription + Membership), Members covered
+        // (Membership). Also gave the shared Billing/reference-number/cost
+        // fields category-aware labels (Premium / Premium frequency for
+        // Insurance, Membership fee for Membership, etc). Room v10 -> v11.
+        // 0.14.1-product-fields-fix: reported 2026-09-01 -- "when I select
+        // Insurance, product details still appear (serial number, model
+        // number, retailer, invoice number)". itemType (Product/Service)
+        // was only ever defaulted once from the initially-selected category
+        // and never re-derived on switching -- switching from Warranty
+        // (defaults to Product) to Insurance left it stuck at Product.
+        // Insurance and Membership are never physical products in this
+        // app's field set, so the Product/Service choice is now hidden and
+        // forced to Service for both. Version bumped (not just a comment,
+        // this time) specifically so Settings > About actually shows a
+        // different string than 0.14.0 did -- there was otherwise no way
+        // to confirm from the phone alone which build was actually
+        // installed.
+        versionCode = 37
+        versionName = "0.14.1-product-fields-fix"
+
+        // 0.14.2-scan-cta-reorder: reported 2026-09-01 -- "a new user may
+        // enter information, then discover, when trying to attach, that
+        // the system could have extracted that data automatically."
+        // Attachments (Take photo/Choose from gallery/Attach PDF + the
+        // thumbnail row) moved from the very bottom of the Add/Edit form
+        // to a new highlighted "Scan instead of typing" card at the very
+        // top, above every text field -- so the auto-fill option is the
+        // first thing a new user sees, not something found after already
+        // typing everything by hand. OCR still only fills fields that are
+        // still blank at scan time either way (parseReceiptFields), so
+        // nothing about the underlying auto-fill logic changed -- this is
+        // purely a discoverability/ordering fix.
+        versionCode = 38
+        versionName = "0.14.2-scan-cta-reorder"
+
+        // 0.14.3-scan-cta-shorten: reported 2026-09-01 -- "the list is too
+        // large... shorten the text so the added information is more
+        // visible." Dropped the separate explanatory sentence under the
+        // card's title entirely; the title itself now states the action
+        // ("Scan / pick / attach instead of typing") with the three icons
+        // directly beneath it, so the card takes noticeably less vertical
+        // space before the rest of the form's fields come into view.
+        versionCode = 39
+        versionName = "0.14.3-scan-cta-shorten"
+
+        // 0.15.0-region-settings: 2026-09-01 -- "Concentrate only on
+        // English speaking countries... I don't want to disturb what we
+        // are doing for India... the current app is not in any way
+        // affected." Adds a Settings > Region picker (India / United
+        // States / United Kingdom / Canada / Australia) that controls only
+        // currency symbol/grouping and date order -- see data/Region.kt's
+        // doc comment for the full design rationale. India stays first and
+        // is the default for every existing and new install; the INDIA
+        // branch in ui/common/CurrencyFormat.kt and DateFormat.kt is the
+        // exact same Locale("en","IN")/"dd-MM-yyyy" that was hardcoded
+        // before this setting existed, so nobody who doesn't open Settings
+        // sees any change at all. Stored in DataStore (SettingsRepository),
+        // NOT Room -- no database migration needed for this feature, unlike
+        // every field added earlier this sprint. Scan/attach auto-fill
+        // (OCR) is NOT region-aware yet and remains tuned for Indian
+        // receipts (₹/Rs/INR, day-first dates) regardless of this setting
+        // -- a disclosed, deliberate scope limit for this pass, not a bug.
+        versionCode = 40
+        versionName = "0.15.0-region-settings"
+
+        // 0.15.1-recurring-costs-breakdown: 2026-09-01 -- "I have a monthly
+        // subscription card on the first screen which also includes AMC.
+        // This will confuse users. Shows total value for each item
+        // separately." Root cause: Item.isRecurringPayment is deliberately
+        // category-agnostic (any category with a billing cycle + amount
+        // set counts), but the Dashboard card was plainly labelled "Monthly
+        // subscriptions" with no hint that a billed AMC/Insurance/
+        // Membership item could be inside that number too. Renamed the
+        // card (and its matching filtered-list title) to "Recurring
+        // costs", and replaced the old bare item-count subtitle with a
+        // per-category breakdown (e.g. "Subscription ₹499 · AMC ₹300"),
+        // sorted highest first -- the total is unchanged, but what it's
+        // made of is now visible in the same glance instead of requiring
+        // a tap-through. No new screen, no new dependency -- see
+        // HomeViewModel.HomeSummary.recurringByCategory and
+        // OverviewScreen's recurringBreakdownText for the implementation.
+        versionCode = 41
+        versionName = "0.15.1-recurring-costs-breakdown"
+
+        // 0.15.2-build-fix: 2026-09-01 -- 0.15.1 failed to compile.
+        // recurringBreakdownText() called the @Composable toCurrencyString()
+        // inside joinToString(" · ") { ... }'s transform lambda -- that
+        // parameter is a *nullable* function type, which Kotlin can't
+        // actually inline even though joinToString itself is `inline`, so a
+        // Composable call inside it is rejected ("@Composable invocations
+        // can only happen from the context of a @Composable function").
+        // Fixed by building the per-category strings with map() first
+        // (whose transform parameter is non-nullable and genuinely
+        // inlined, so the Composable call is fine there) and only then
+        // joining the resulting List<String> with a plain, lambda-free
+        // joinToString(" · "). No behaviour change -- same text, same
+        // formatting -- purely a fix to get 0.15.1's feature to compile.
+        versionCode = 42
+        versionName = "0.15.2-build-fix"
+
+        // 0.15.3-cost-label-clarity: 2026-09-01 -- "When I add an item
+        // under AMC, I see a cost and a billing amount per cycle. What is
+        // the cost? If that is the purchase price, label it as such."
+        // costLabel() used to return generic "Cost" for every category
+        // except Insurance, with no hint of what it meant -- confusing
+        // wherever a category ALSO shows the Billing section (AMC,
+        // Subscription, Membership, Other all do). This field genuinely
+        // IS a purchase price everywhere it isn't Insurance/Membership --
+        // ItemDetailScreen's own TCO section already calls this exact
+        // field "Purchase price"; the Add/Edit form's label was simply out
+        // of sync with that. Now: Warranty/Subscription/AMC/Other ->
+        // "Purchase price", Membership -> "Enrollment / joining fee"
+        // (nobody "purchases" a membership), Insurance unchanged ("Sum
+        // insured / coverage amount", already distinct from "Premium
+        // paid"). Same underlying `cost` column throughout -- relabel
+        // only, no migration, no new field. Also: "display the recurring
+        // cost per month" -- the Dashboard's Recurring-costs card and its
+        // per-category breakdown now both show "/mo" explicitly (label
+        // renamed to "Monthly recurring costs"), since the figures were
+        // already monthly-normalised but nothing on screen said so.
+        versionCode = 43
+        versionName = "0.15.3-cost-label-clarity"
+
+        // 0.15.4-debug-menu-in-release: 2026-09-01 -- "The check reminders
+        // and Add test records are both missing. It needs to be built
+        // back." Both were gated behind BuildConfig.DEBUG, which is false
+        // in the signed release APK the user (and testers) actually
+        // install -- so the whole "⋮" debug menu on the Overview screen
+        // never rendered outside a debug-variant build, not just these two
+        // items. Decision (asked, not assumed): show the menu
+        // unconditionally in every build, release included, rather than a
+        // hidden unlock gesture or a second debug-signed APK -- these are
+        // internal testing tools, not a security boundary. Also restores
+        // "Add test records" (was "Load sample data", removed 2026-08-25,
+        // function kept dormant in SampleData.kt for exactly this
+        // reconnect-later case) -- seeds realistic items via the same
+        // ItemRepository.saveItem() path every real Add uses, spanning
+        // every category and urgency band, useful for exercising the
+        // reminder/urgency/billing logic without hand-typing test data.
+        versionCode = 44
+        versionName = "0.15.4-debug-menu-in-release"
+
+        // 0.15.5-real-app-icon: 2026-09-13 -- Sprint 10's "replace the
+        // placeholder adaptive icon" item. Foreground raster
+        // (mipmap-*/ic_launcher_foreground.png) regenerated from the
+        // user-provided "WISMA icon.png" (shield/wrench/document/person
+        // mark), cropped to its own white rounded-card bounds (drop-shadow
+        // halo trimmed off) and scaled to 72% of the 108dp adaptive-icon
+        // canvas. Background vector recolored from the electric-blue
+        // placeholder fill to plain white to match that card's own color,
+        // so the launcher mask edge (circle/squircle/rounded-square, varies
+        // by device) stays invisible either way. Manifest/AndroidManifest.xml
+        // icon reference (@mipmap/ic_launcher) is unchanged -- only the
+        // underlying assets moved.
+        versionCode = 45
+        versionName = "0.15.5-real-app-icon"
 
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Only signed when keystore.properties exists locally -- see
+            // its comment above. Without a signingConfig here, assembleRelease
+            // still succeeds but produces an unsigned, uninstallable APK,
+            // which is the whole reason this needed wiring up rather than
+            // just running assembleRelease as-is.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -173,6 +367,22 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+
+    // Added 2026-09-01, beta distribution: AGP runs a "vital" lint pass
+    // (lintVitalAnalyzeRelease) automatically before every release build,
+    // which exists to block Play Store submissions with fatal lint issues.
+    // We're not submitting to the Play Store from this machine, and on
+    // Windows this task has been failing outright with a file-lock error
+    // on its own lint-cache jar (another process -- Windows Defender, a
+    // leftover Gradle daemon, or Android Studio's indexer -- holding the
+    // file open), unrelated to anything in this codebase. Disabling it for
+    // release builds removes that whole class of flaky Windows build
+    // failures; re-enable (or just run `gradlew lint` manually any time)
+    // once this is actually headed to the Play Store, where it's worth
+    // having back.
+    lint {
+        checkReleaseBuilds = false
     }
 }
 

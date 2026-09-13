@@ -119,7 +119,7 @@ import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.SearchResult
 import com.venunair.warden.reminders.ReminderCheckWorker
 import com.venunair.warden.ui.common.categoryIcon
-import com.venunair.warden.ui.common.toIndianCurrencyString
+import com.venunair.warden.ui.common.toCurrencyString
 import com.venunair.warden.ui.theme.ItemUrgency
 import com.venunair.warden.ui.theme.color
 import com.venunair.warden.ui.theme.urgencyOf
@@ -219,7 +219,12 @@ fun HomeScreen(
         HomeViewModel.QuickFilter.DUE_SOON -> "Due soon"
         HomeViewModel.QuickFilter.EXPIRED -> "Expired"
         HomeViewModel.QuickFilter.AT_RISK -> "At risk this month"
-        HomeViewModel.QuickFilter.SUBSCRIPTIONS -> "Monthly subscriptions"
+        // Renamed 2026-09-01 alongside the Dashboard card (was "Monthly
+        // subscriptions") -- the underlying QuickFilter still matches
+        // Item.isRecurringPayment across every category (AMC, Insurance,
+        // Membership, Subscription), not literal subscriptions only, so
+        // this title needs to stay honest about that too.
+        HomeViewModel.QuickFilter.SUBSCRIPTIONS -> "Recurring costs"
     }
 
     Scaffold(

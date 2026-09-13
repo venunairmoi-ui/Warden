@@ -12,3 +12,9 @@ local.properties
 *.ap_
 *.dex
 /app/build
+
+# Release signing (added 2026-08-27) -- the keystore and its passwords
+# must never be committed. See keystore.properties's own comment.
+keystore.properties
+keystore/*.jks
+keystore/*.keystore

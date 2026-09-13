@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -76,6 +77,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -97,6 +99,11 @@ import com.venunair.warden.data.ItemType
 import com.venunair.warden.data.costLabel
 import com.venunair.warden.data.defaultItemType
 import com.venunair.warden.data.referenceNumberLabel
+import com.venunair.warden.data.WarrantyType
+import com.venunair.warden.data.billingAmountLabel
+import com.venunair.warden.data.billingCycleLabel
+import com.venunair.warden.data.billingSectionLabel
+import com.venunair.warden.data.planTierLabel
 import com.venunair.warden.data.subcategoriesFor
 import com.venunair.warden.ocr.parseReceiptFields
 import com.venunair.warden.ocr.recognizeText
@@ -104,7 +111,7 @@ import com.venunair.warden.pdf.PdfPageRenderer
 import com.venunair.warden.ui.attachment.AttachmentThumbnailRow
 import com.venunair.warden.ui.attachment.AttachmentViewerDialog
 import com.venunair.warden.ui.common.decodeBitmapForOcr
-import com.venunair.warden.ui.common.toIndianDateString
+import com.venunair.warden.ui.common.toDateString
 import com.venunair.warden.ui.common.toLocalDateFromUtcMillis
 import com.venunair.warden.ui.common.toUtcMillis
 import kotlinx.coroutines.flow.flowOf
@@ -215,6 +222,17 @@ fun AddEditItemScreen(
     var billingAmountText by remember(existingItem) { mutableStateOf(existingItem?.billingAmount?.toString() ?: "") }
     var autoRenew by remember(existingItem) { mutableStateOf(existingItem?.autoRenew ?: false) }
 
+    // ── Category-specific fields (2026-08-30 pass) ───────────────────
+    // Each is shown for exactly one category (see the AnimatedVisibility
+    // gates below) and blanked to null on save for every other category --
+    // see viewModel.save()'s call site.
+    var nomineeName by remember(existingItem) { mutableStateOf(existingItem?.nomineeName ?: "") }
+    var serviceProviderContact by remember(existingItem) { mutableStateOf(existingItem?.serviceProviderContact ?: "") }
+    var warrantyType by remember(existingItem) { mutableStateOf(existingItem?.warrantyType) }
+    var planTier by remember(existingItem) { mutableStateOf(existingItem?.planTier ?: "") }
+    var membersCoveredText by remember(existingItem) { mutableStateOf(existingItem?.membersCovered?.toString() ?: "") }
+    var warrantyTypeMenuExpanded by remember { mutableStateOf(false) }
+
     // ── Sprint 8: Configurable reminder intervals ─────────────────
     val reminderChecked = remember { mutableStateMapOf<Int, Boolean>() }
     var reminderOffsetsLoaded by remember { mutableStateOf(false) }
@@ -269,6 +287,23 @@ fun AddEditItemScreen(
     LaunchedEffect(category) {
         if (subCategory.isNotEmpty() && subCategory !in subcategoriesFor(category)) {
             subCategory = ""
+        }
+        // Bug fix, 2026-09-01: "when I select Insurance, product details
+        // still appear (serial number, model number, retailer, invoice
+        // number)". Root cause -- itemType is deliberately independent of
+        // category (see ItemType's doc comment: an RO-purifier AMC is a
+        // Product, a housekeeping AMC is a Service) and is only ever
+        // defaulted ONCE, when the form first opens. Switching the
+        // Category dropdown afterward never re-derives it, so an item
+        // started as Warranty (itemType defaults to Product) and then
+        // switched to Insurance kept itemType = Product, and Product
+        // details stayed visible -- unlike Warranty/AMC/Subscription,
+        // there's no real-world case of an Insurance or Membership item
+        // having a serial number/model number/retailer/invoice, so those
+        // two categories don't get the Product/Service choice at all;
+        // force it to Service whenever the category becomes one of them.
+        if (category == ItemCategory.INSURANCE || category == ItemCategory.MEMBERSHIP) {
+            itemType = ItemType.SERVICE
         }
     }
 
@@ -492,6 +527,106 @@ fun AddEditItemScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // ── Scan to auto-fill (moved to the top, 2026-09-01) ─────
+            // Feedback: "a new user may enter information, then discover,
+            // when trying to attach, that the system could have extracted
+            // that data automatically." This exact block (buttons +
+            // thumbnail row) used to sit at the very bottom of the form,
+            // under "Notes & attachments" -- by the time a user scrolled
+            // that far they'd usually already hand-typed everything OCR
+            // could have filled for them (parseReceiptFields only fills
+            // fields that are still blank -- see handleNewAttachment --
+            // so nothing was ever silently overwritten, but the effort was
+            // still wasted). Moved here, first thing on the screen, and
+            // reframed from a passive "Attachments" label to an explicit
+            // call-to-action so the scan option is the first thing anyone
+            // sees, not a footnote discovered after the fact. Kept as one
+            // section with the attachment thumbnails below it (rather than
+            // splitting "scan" from "attachments") so this stays the one
+            // place to both start a scan and review what's already
+            // attached, instead of two separate UI locations for the same
+            // underlying attachment list.
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Feedback, 2026-09-01: the original title + full
+                    // explanatory sentence took too much vertical space and
+                    // pushed the actual icons (the part people act on)
+                    // further down -- shortened to one line that states the
+                    // action itself, per "scan/pick/attach instead of
+                    // typing" rather than a title plus a separate
+                    // explanation of what that means.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.DocumentScanner,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Scan / pick / attach instead of typing",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        if (isProcessingAttachment) {
+                            Spacer(Modifier.width(8.dp))
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        OutlinedIconButton(
+                            onClick = {
+                                val granted = ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.CAMERA
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (granted) onLaunchCamera() else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        ) {
+                            Icon(Icons.Filled.PhotoCamera, contentDescription = "Take photo")
+                        }
+                        OutlinedIconButton(
+                            onClick = {
+                                galleryLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        ) {
+                            Icon(Icons.Filled.PhotoLibrary, contentDescription = "Choose from gallery")
+                        }
+                        OutlinedIconButton(
+                            onClick = { pdfLauncher.launch(arrayOf("application/pdf")) }
+                        ) {
+                            Icon(Icons.Filled.PictureAsPdf, contentDescription = "Attach PDF")
+                        }
+                    }
+                    AttachmentThumbnailRow(
+                        attachments = attachments + pendingAttachments.map { it.toDisplayAttachment() },
+                        onOpen = { viewerAttachment = it },
+                        onDelete = { attachment ->
+                            if (attachment.id < 0) {
+                                pendingAttachments.removeAll { it.id == attachment.id }
+                                AttachmentStorage.deleteBackingFile(context, attachment.localFileUri)
+                                attachment.thumbnailUri?.let { AttachmentStorage.deleteBackingFile(context, it) }
+                            } else {
+                                scope.launch {
+                                    repository.deleteAttachment(attachment)
+                                    AttachmentStorage.deleteBackingFile(context, attachment.localFileUri)
+                                    attachment.thumbnailUri?.let { AttachmentStorage.deleteBackingFile(context, it) }
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+
             // ── Core fields ─────────────────────────────────────────
             FormSectionCard(title = "Item information") {
                 OutlinedTextField(
@@ -579,6 +714,14 @@ fun AddEditItemScreen(
                 // Product/Service reintroduction, 2026-08-25: independent
                 // of Category (see ItemType's doc comment) -- decides
                 // whether the Product details section below applies.
+                // Bug fix, 2026-09-01: hidden entirely for Insurance and
+                // Membership -- there's no real case of either being a
+                // physical "Product" in this app's own field set (no
+                // serial number/model number/retailer/invoice makes sense
+                // for a policy or a membership), so showing a dropdown
+                // that's forced to Service anyway (see the LaunchedEffect
+                // above) would just be confusing dead UI.
+                AnimatedVisibility(visible = category != ItemCategory.INSURANCE && category != ItemCategory.MEMBERSHIP) {
                 ExposedDropdownMenuBox(
                     expanded = itemTypeMenuExpanded,
                     onExpandedChange = { itemTypeMenuExpanded = it }
@@ -606,6 +749,7 @@ fun AddEditItemScreen(
                             )
                         }
                     }
+                }
                 }
 
                 DateField(
@@ -659,6 +803,60 @@ fun AddEditItemScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                // AMC-only: who to actually call for a visit -- see
+                // Item.serviceProviderContact's doc comment for why this is
+                // distinct from the general Vendor field above.
+                AnimatedVisibility(visible = category == ItemCategory.AMC) {
+                    OutlinedTextField(
+                        value = serviceProviderContact,
+                        onValueChange = { serviceProviderContact = it },
+                        label = { Text("Service provider contact (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                // Warranty-only: who's on the hook for a claim. Placed here
+                // rather than in a Billing section since Warranty is the one
+                // category that never shows Billing at all (showBilling
+                // below).
+                AnimatedVisibility(visible = category == ItemCategory.WARRANTY) {
+                    ExposedDropdownMenuBox(
+                        expanded = warrantyTypeMenuExpanded,
+                        onExpandedChange = { warrantyTypeMenuExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = warrantyType?.displayName ?: "",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Warranty type (optional)") },
+                            modifier = Modifier
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = warrantyTypeMenuExpanded,
+                            onDismissRequest = { warrantyTypeMenuExpanded = false }
+                        ) {
+                            WarrantyType.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.displayName) },
+                                    onClick = {
+                                        warrantyType = option
+                                        warrantyTypeMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                // Insurance-only: who the payout goes to.
+                AnimatedVisibility(visible = category == ItemCategory.INSURANCE) {
+                    OutlinedTextField(
+                        value = nomineeName,
+                        onValueChange = { nomineeName = it },
+                        label = { Text("Nominee (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 OutlinedTextField(
                     value = location,
                     onValueChange = { location = it },
@@ -677,7 +875,15 @@ fun AddEditItemScreen(
             // ItemType -- a Service can still be billed (Netflix) or not
             // (a one-time labour warranty), so gating it on ItemType would
             // just recreate a different two-fields-same-question problem.
-            val showProductDetails = itemType == ItemType.PRODUCT
+            // Bug fix, 2026-09-01: also excludes Insurance/Membership
+            // outright, on top of the LaunchedEffect(category) above that
+            // forces itemType to Service for them -- belt-and-suspenders
+            // against any item already saved with itemType = Product from
+            // before this fix (e.g. an Insurance item created while this
+            // bug was live), so re-opening it for edit can't still show
+            // Product details either.
+            val showProductDetails = itemType == ItemType.PRODUCT &&
+                category != ItemCategory.INSURANCE && category != ItemCategory.MEMBERSHIP
             val showBilling = category != ItemCategory.WARRANTY
 
             AnimatedVisibility(visible = showProductDetails) {
@@ -710,8 +916,17 @@ fun AddEditItemScreen(
             }
 
             // ── Billing section ──────────────────────────────────────
+            // Category-specific fields pass, 2026-08-30: section title and
+            // both field labels are now category-aware (billingSectionLabel/
+            // billingCycleLabel/billingAmountLabel) -- Insurance reads
+            // "Premium" / "Premium frequency" / "Premium paid", Membership
+            // reads "Membership fee" / ".../ Membership fee amount", and
+            // Subscription/AMC/Other keep the original "Billing" wording.
+            // Same underlying billingCycle/billingAmount fields throughout;
+            // see those functions' doc comments for why this is a relabel,
+            // not a new column.
             AnimatedVisibility(visible = showBilling) {
-                FormSectionCard(title = "Billing") {
+                FormSectionCard(title = category.billingSectionLabel()) {
                     ExposedDropdownMenuBox(
                         expanded = billingCycleMenuExpanded,
                         onExpandedChange = { billingCycleMenuExpanded = it }
@@ -720,7 +935,7 @@ fun AddEditItemScreen(
                             value = billingCycle?.displayName ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Billing cycle") },
+                            label = { Text(category.billingCycleLabel()) },
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                 .fillMaxWidth()
@@ -744,9 +959,30 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = billingAmountText,
                         onValueChange = { billingAmountText = it },
-                        label = { Text("Billing amount per cycle") },
+                        label = { Text(category.billingAmountLabel()) },
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Subscription: plan name. Membership: tier name. Same
+                    // field, category-aware label -- see planTierLabel.
+                    AnimatedVisibility(visible = category == ItemCategory.SUBSCRIPTION || category == ItemCategory.MEMBERSHIP) {
+                        OutlinedTextField(
+                            value = planTier,
+                            onValueChange = { planTier = it },
+                            label = { Text("${category.planTierLabel()} (optional)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // Membership-only: how many people this covers.
+                    AnimatedVisibility(visible = category == ItemCategory.MEMBERSHIP) {
+                        OutlinedTextField(
+                            value = membersCoveredText,
+                            onValueChange = { membersCoveredText = it },
+                            label = { Text("Members covered (optional)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
 
                     // Retaxonomy follow-up, 2026-08-25: was gated to
                     // itemType == SUBSCRIPTION only, which meant an AMC
@@ -813,64 +1049,19 @@ fun AddEditItemScreen(
                 }
             }
 
-            // ── Notes + Attachments ──────────────────────────────────
-            FormSectionCard(title = "Notes & attachments") {
+            // ── Notes ─────────────────────────────────────────────────
+            // Attachments moved to the top of the form, 2026-09-01 -- see
+            // the "Scan instead of typing" card above. Kept as its own
+            // section (not folded into "Item information") purely because
+            // Notes is free text and reads better with room to breathe,
+            // same reasoning as before -- it just no longer shares this
+            // card with Attachments.
+            FormSectionCard(title = "Notes") {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("Notes (optional)") },
                     modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Attachments", style = MaterialTheme.typography.labelLarge)
-                    if (isProcessingAttachment) {
-                        Spacer(Modifier.width(8.dp))
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OutlinedIconButton(
-                        onClick = {
-                            val granted = ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.CAMERA
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (granted) onLaunchCamera() else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    ) {
-                        Icon(Icons.Filled.PhotoCamera, contentDescription = "Take photo")
-                    }
-                    OutlinedIconButton(
-                        onClick = {
-                            galleryLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        }
-                    ) {
-                        Icon(Icons.Filled.PhotoLibrary, contentDescription = "Choose from gallery")
-                    }
-                    OutlinedIconButton(
-                        onClick = { pdfLauncher.launch(arrayOf("application/pdf")) }
-                    ) {
-                        Icon(Icons.Filled.PictureAsPdf, contentDescription = "Attach PDF")
-                    }
-                }
-                AttachmentThumbnailRow(
-                    attachments = attachments + pendingAttachments.map { it.toDisplayAttachment() },
-                    onOpen = { viewerAttachment = it },
-                    onDelete = { attachment ->
-                        if (attachment.id < 0) {
-                            pendingAttachments.removeAll { it.id == attachment.id }
-                            AttachmentStorage.deleteBackingFile(context, attachment.localFileUri)
-                            attachment.thumbnailUri?.let { AttachmentStorage.deleteBackingFile(context, it) }
-                        } else {
-                            scope.launch {
-                                repository.deleteAttachment(attachment)
-                                AttachmentStorage.deleteBackingFile(context, attachment.localFileUri)
-                                attachment.thumbnailUri?.let { AttachmentStorage.deleteBackingFile(context, it) }
-                            }
-                        }
-                    }
                 )
             }
 
@@ -913,6 +1104,11 @@ fun AddEditItemScreen(
                                 autoRenew = autoRenew,
                                 visitsIncluded = if (category == ItemCategory.AMC) visitsIncludedText.toIntOrNull() else null,
                                 serviceIntervalMonths = if (category == ItemCategory.AMC) serviceIntervalText.toIntOrNull() else null,
+                                nomineeName = if (category == ItemCategory.INSURANCE) nomineeName.trim().ifBlank { null } else null,
+                                serviceProviderContact = if (category == ItemCategory.AMC) serviceProviderContact.trim().ifBlank { null } else null,
+                                warrantyType = if (category == ItemCategory.WARRANTY) warrantyType else null,
+                                planTier = if (category == ItemCategory.SUBSCRIPTION || category == ItemCategory.MEMBERSHIP) planTier.trim().ifBlank { null } else null,
+                                membersCovered = if (category == ItemCategory.MEMBERSHIP) membersCoveredText.toIntOrNull() else null,
                                 status = existingItem?.status ?: ItemStatus.ACTIVE,
                                 reminderOffsets = reminderChecked.filter { it.value }.keys.toList().sorted(),
                                 onSaved = { newId ->
@@ -1078,7 +1274,7 @@ private fun DateField(
 ) {
     Box(modifier = modifier) {
         OutlinedTextField(
-            value = date?.toIndianDateString() ?: "",
+            value = date?.toDateString() ?: "",
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },

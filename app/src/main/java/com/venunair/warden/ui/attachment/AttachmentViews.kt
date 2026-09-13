@@ -60,8 +60,8 @@ import com.venunair.warden.ocr.ParsedReceiptFields
 import com.venunair.warden.ocr.parseReceiptFields
 import com.venunair.warden.pdf.PdfPageRenderer
 import com.venunair.warden.ui.common.rememberLocalThumbnail
-import com.venunair.warden.ui.common.toIndianCurrencyString
-import com.venunair.warden.ui.common.toIndianDateString
+import com.venunair.warden.ui.common.toCurrencyString
+import com.venunair.warden.ui.common.toDateString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -324,7 +324,7 @@ fun AttachmentViewerDialog(
                         fields.purchaseDate?.let { value ->
                             DetectedFieldRow(
                                 label = "Purchase date",
-                                value = value.toIndianDateString(),
+                                value = value.toDateString(),
                                 onApply = onApplyPurchaseDate?.let { apply ->
                                     {
                                         apply(value)
@@ -336,7 +336,7 @@ fun AttachmentViewerDialog(
                         fields.cost?.let { value ->
                             DetectedFieldRow(
                                 label = "Cost",
-                                value = value.toIndianCurrencyString(),
+                                value = value.toCurrencyString(),
                                 onApply = onApplyCost?.let { apply ->
                                     {
                                         apply(value)

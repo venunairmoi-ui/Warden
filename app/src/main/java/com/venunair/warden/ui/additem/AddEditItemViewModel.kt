@@ -8,6 +8,7 @@ import com.venunair.warden.data.ItemCategory
 import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.ItemStatus
 import com.venunair.warden.data.ItemType
+import com.venunair.warden.data.WarrantyType
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -59,6 +60,14 @@ class AddEditItemViewModel(
         // auto-fills a default when this comes through null on a new item
         // or a renewal, but never overrides a value the user actually typed.
         serviceIntervalMonths: Int?,
+        // Category-specific fields addition, 2026-08-30: each null except
+        // for the one category it's actually shown for -- see each field's
+        // doc comment on Item.
+        nomineeName: String?,
+        serviceProviderContact: String?,
+        warrantyType: WarrantyType?,
+        planTier: String?,
+        membersCovered: Int?,
         // Caller passes the loaded item's current status on an edit (it has
         // it, from the same Flow the rest of the form is pre-filled from).
         // Without this, every edit silently reset status back to the Item
@@ -99,7 +108,12 @@ class AddEditItemViewModel(
                 billingAmount = billingAmount,
                 autoRenew = autoRenew,
                 visitsIncluded = visitsIncluded,
-                serviceIntervalMonths = serviceIntervalMonths
+                serviceIntervalMonths = serviceIntervalMonths,
+                nomineeName = nomineeName,
+                serviceProviderContact = serviceProviderContact,
+                warrantyType = warrantyType,
+                planTier = planTier,
+                membersCovered = membersCovered
                 // NOTE: createdAt resets to today on every edit since Item's
                 // default isn't preserved here. Harmless for now — nothing
                 // reads createdAt yet — but revisit if you add "sort by date
