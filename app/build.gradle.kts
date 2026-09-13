@@ -324,6 +324,25 @@ android {
         versionCode = 45
         versionName = "0.15.5-real-app-icon"
 
+        // 0.15.6-dashboard-splash-icon-fix: 2026-09-13 -- "I can see the old
+        // logo on the dashboard." 0.15.5 only re-wired the launcher icon;
+        // the Overview screen's TopAppBar lockup and the in-app Splash
+        // screen use two separate, tintable line-art drawables
+        // (ic_wisma_mark / ic_wisma_splash_mark, ColorFilter.tint'd to
+        // onPrimary/onPrimaryContainer per theme) that were untouched and
+        // still showed the old placeholder shield outline. Regenerated both
+        // from the same "WISMA icon.png" source: the shield+checkmark tile
+        // isolated from its 2x2 grid, then keyed to a white-on-transparent
+        // silhouette (white shield fill + a checkmark-shaped cutout) via a
+        // whiteness threshold -- the same luminance-as-alpha technique the
+        // 2026-08-25 pass used -- rather than dropping in the new icon's
+        // full-color art directly, which a flat SrcIn tint would've just
+        // squashed into a solid color block anyway. No Kotlin changes --
+        // both screens' existing ColorFilter.tint calls work unmodified
+        // against the new art.
+        versionCode = 46
+        versionName = "0.15.6-dashboard-splash-icon-fix"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
