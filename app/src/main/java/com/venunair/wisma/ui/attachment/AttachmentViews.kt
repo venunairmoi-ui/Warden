@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.venunair.wisma.data.Attachment
 import com.venunair.wisma.data.AttachmentMimeType
+import com.venunair.wisma.data.ItemCategory
 import com.venunair.wisma.ocr.ParsedReceiptFields
 import com.venunair.wisma.ocr.parseReceiptFields
 import com.venunair.wisma.pdf.PdfPageRenderer
@@ -258,6 +259,11 @@ fun AttachmentViewerDialog(
     onDismiss: () -> Unit,
     onApplyVendor: ((String) -> Unit)? = null,
     onApplyPurchaseDate: ((LocalDate) -> Unit)? = null,
+    // Bug fix, 2026-09-15: same optional-callback pattern as every other
+    // field here -- see ParsedReceiptFields.expiryDate's own doc comment
+    // for why this didn't exist until now.
+    onApplyExpiryDate: ((LocalDate) -> Unit)? = null,
+    onApplyCategory: ((ItemCategory) -> Unit)? = null,
     onApplyCost: ((Double) -> Unit)? = null,
     onApplySerialNumber: ((String) -> Unit)? = null,
     onApplyModelNumber: ((String) -> Unit)? = null,
@@ -276,8 +282,9 @@ fun AttachmentViewerDialog(
         attachment.rawOcrText?.takeIf { it.isNotBlank() }?.let(::parseReceiptFields)
     }
     val canApplyAnything = onApplyVendor != null || onApplyPurchaseDate != null ||
-        onApplyCost != null || onApplySerialNumber != null || onApplyModelNumber != null ||
-        onApplyRetailer != null || onApplyInvoiceNumber != null || onApplyReferenceNumber != null
+        onApplyExpiryDate != null || onApplyCategory != null || onApplyCost != null ||
+        onApplySerialNumber != null || onApplyModelNumber != null || onApplyRetailer != null ||
+        onApplyInvoiceNumber != null || onApplyReferenceNumber != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -326,9 +333,10 @@ fun AttachmentViewerDialog(
                 }
 
                 parsed?.takeIf {
-                    it.vendor != null || it.purchaseDate != null || it.cost != null ||
-                        it.serialNumber != null || it.modelNumber != null ||
-                        it.retailer != null || it.invoiceNumber != null || it.referenceNumber != null
+                    it.vendor != null || it.purchaseDate != null || it.expiryDate != null ||
+                        it.category != null || it.cost != null || it.serialNumber != null ||
+                        it.modelNumber != null || it.retailer != null || it.invoiceNumber != null ||
+                        it.referenceNumber != null
                 }?.let { fields ->
                     Column(
                         modifier = Modifier
@@ -369,6 +377,30 @@ fun AttachmentViewerDialog(
                                     {
                                         apply(value)
                                         Toast.makeText(context, "Purchase date applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.expiryDate?.let { value ->
+                            DetectedFieldRow(
+                                label = "Expiry / next due date",
+                                value = value.toDateString(),
+                                onApply = onApplyExpiryDate?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Expiry date applied", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                        fields.category?.let { value ->
+                            DetectedFieldRow(
+                                label = "Category",
+                                value = value.displayName,
+                                onApply = onApplyCategory?.let { apply ->
+                                    {
+                                        apply(value)
+                                        Toast.makeText(context, "Category applied", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             )
