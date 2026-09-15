@@ -1,5 +1,6 @@
 package com.venunair.wisma.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -8,7 +9,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TrendingDown
@@ -53,6 +57,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -180,6 +185,28 @@ fun HomeScreen(
     // Track items just restored via Undo so their row skips the entry animation
     val restoredItemIds = remember { mutableStateListOf<Long>() }
 
+    // ── Phase 3: multi-select bulk actions ───────────────────────────
+    val selectedIds by viewModel.selectedIds.collectAsState()
+    val selectionMode = selectedIds.isNotEmpty()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // Back exits selection mode first rather than leaving the screen --
+    // matches Gmail/Photos, and stops a stray back-press mid-selection
+    // from silently discarding the in-progress selection.
+    BackHandler(enabled = selectionMode) { viewModel.clearSelection() }
+
+    // context.getString(...), not stringResource(...): the count has to
+    // be captured at the moment "Archive" is tapped, before
+    // archiveSelected() clears the selection it's counting -- and
+    // stringResource() can't be called from inside that non-composable
+    // click handler anyway.
+    fun archiveSelectedWithFeedback() {
+        val count = selectedIds.size
+        val message = context.getString(R.string.bulk_archived_snackbar, count)
+        viewModel.archiveSelected()
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
     LaunchedEffect(Unit) {
         initialFilter?.let { viewModel.applyInitialFilter(it) }
         if (startInSearch) viewModel.setSearchActive(true)
@@ -240,32 +267,51 @@ fun HomeScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(filterTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.setSearchActive(true) }) {
-                        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.content_desc_search))
-                    }
-                    // quickFilter captured via a local val inside the let,
-                    // rather than smart-cast across the IconButton's onClick
-                    // lambda, to sidestep any ambiguity about whether a
-                    // delegated `by collectAsState()` val smart-casts across
-                    // a captured closure.
-                    quickFilter?.let { activeFilter ->
-                        IconButton(onClick = { viewModel.toggleQuickFilter(activeFilter) }) {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.content_desc_clear_filter))
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.selection_count_title, selectedIds.size)) },
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.content_desc_exit_selection))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.selectAllVisible() }) {
+                            Icon(Icons.Filled.SelectAll, contentDescription = stringResource(R.string.content_desc_select_all))
+                        }
+                        IconButton(onClick = { archiveSelectedWithFeedback() }) {
+                            Icon(Icons.Filled.Archive, contentDescription = stringResource(R.string.action_archive))
                         }
                     }
-                }
-            )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(filterTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.setSearchActive(true) }) {
+                            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.content_desc_search))
+                        }
+                        // quickFilter captured via a local val inside the let,
+                        // rather than smart-cast across the IconButton's onClick
+                        // lambda, to sidestep any ambiguity about whether a
+                        // delegated `by collectAsState()` val smart-casts across
+                        // a captured closure.
+                        quickFilter?.let { activeFilter ->
+                            IconButton(onClick = { viewModel.toggleQuickFilter(activeFilter) }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.content_desc_clear_filter))
+                            }
+                        }
+                    }
+                )
+            }
         },
         floatingActionButton = {
-            if (!isSearching) {
+            if (!isSearching && !selectionMode) {
                 ExtendedFloatingActionButton(
                     onClick = onAddItem,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
@@ -337,7 +383,11 @@ fun HomeScreen(
                                     archivedItemName = item.name
                                     archiveSeq++
                                 },
-                                onEdit = { onEditItem(item.id) }
+                                onEdit = { onEditItem(item.id) },
+                                selectionMode = selectionMode,
+                                selected = item.id in selectedIds,
+                                onToggleSelect = { viewModel.toggleSelection(item.id) },
+                                onLongClick = { viewModel.startSelection(item.id) }
                             )
                         }
                     }
@@ -370,7 +420,11 @@ fun HomeScreen(
                                     archivedItemName = item.name
                                     archiveSeq++
                                 },
-                                onEdit = { onEditItem(item.id) }
+                                onEdit = { onEditItem(item.id) },
+                                selectionMode = selectionMode,
+                                selected = item.id in selectedIds,
+                                onToggleSelect = { viewModel.toggleSelection(item.id) },
+                                onLongClick = { viewModel.startSelection(item.id) }
                             )
                         }
                     }
@@ -403,7 +457,11 @@ fun HomeScreen(
                                     archivedItemName = item.name
                                     archiveSeq++
                                 },
-                                onEdit = { onEditItem(item.id) }
+                                onEdit = { onEditItem(item.id) },
+                                selectionMode = selectionMode,
+                                selected = item.id in selectedIds,
+                                onToggleSelect = { viewModel.toggleSelection(item.id) },
+                                onLongClick = { viewModel.startSelection(item.id) }
                             )
                         }
                     }
@@ -754,7 +812,15 @@ private fun SwipeableItemRow(
     skipAnimation: Boolean = false,
     onClick: () -> Unit,
     onArchive: () -> Unit,
-    onEdit: (() -> Unit)? = null
+    onEdit: (() -> Unit)? = null,
+    // Multi-select (Phase 3). selectionMode true for every row in the
+    // list, not just this one -- that's what turns swipe/overflow off
+    // and the checkbox on across the board, not just on rows someone has
+    // actually tapped.
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     var visible by remember { mutableStateOf(skipAnimation) }
     LaunchedEffect(item.id) {
@@ -770,69 +836,84 @@ private fun SwipeableItemRow(
             animationSpec = tween(300)
         )
     ) {
-        // Guard: prevent duplicate onArchive calls if the spring-back
-        // animation oscillates across the swipe threshold.
-        var swiped by remember { mutableStateOf(false) }
-        val dismissState = rememberSwipeToDismissBoxState(
-            confirmValueChange = { dismissValue ->
-                if (dismissValue == SwipeToDismissBoxValue.StartToEnd && !swiped) {
-                    swiped = true
-                    onArchive()
-                }
-                // Always return false so the state resets to Settled.
-                // The item disappears from the list instantly (Flow filters
-                // out ARCHIVED), and when Undo restores it, the fresh
-                // composable starts at Settled instead of inheriting the
-                // saved StartToEnd value from rememberSaveable.
-                false
-            }
-        )
-        SwipeToDismissBox(
-            state = dismissState,
-            backgroundContent = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .background(
-                            MaterialTheme.colorScheme.secondaryContainer,
-                            // Matches ProductCard's own corner radius so the
-                            // swipe-reveal background and the card sliding
-                            // over it share the same silhouette mid-swipe.
-                            MaterialTheme.shapes.extraLarge
-                        )
-                        .padding(start = 20.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.Archive,
-                            contentDescription = stringResource(R.string.action_archive),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(R.string.action_archive),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
-            },
-            enableDismissFromEndToStart = false
-        ) {
+        if (selectionMode) {
+            // No swipe, no overflow menu while selecting -- a checkbox
+            // leads the row instead of the category icon, and tapping
+            // anywhere toggles selection rather than opening the item.
             ItemRow(
                 item = item,
-                onClick = onClick,
+                onClick = { onToggleSelect?.invoke() },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                onEdit = onEdit,
-                onArchive = {
-                    if (!swiped) {
+                leading = {
+                    Checkbox(checked = selected, onCheckedChange = { onToggleSelect?.invoke() })
+                }
+            )
+        } else {
+            // Guard: prevent duplicate onArchive calls if the spring-back
+            // animation oscillates across the swipe threshold.
+            var swiped by remember { mutableStateOf(false) }
+            val dismissState = rememberSwipeToDismissBoxState(
+                confirmValueChange = { dismissValue ->
+                    if (dismissValue == SwipeToDismissBoxValue.StartToEnd && !swiped) {
                         swiped = true
                         onArchive()
                     }
+                    // Always return false so the state resets to Settled.
+                    // The item disappears from the list instantly (Flow filters
+                    // out ARCHIVED), and when Undo restores it, the fresh
+                    // composable starts at Settled instead of inheriting the
+                    // saved StartToEnd value from rememberSaveable.
+                    false
                 }
             )
+            SwipeToDismissBox(
+                state = dismissState,
+                backgroundContent = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                // Matches ProductCard's own corner radius so the
+                                // swipe-reveal background and the card sliding
+                                // over it share the same silhouette mid-swipe.
+                                MaterialTheme.shapes.extraLarge
+                            )
+                            .padding(start = 20.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Archive,
+                                contentDescription = stringResource(R.string.action_archive),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.action_archive),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                },
+                enableDismissFromEndToStart = false
+            ) {
+                ItemRow(
+                    item = item,
+                    onClick = onClick,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    onEdit = onEdit,
+                    onArchive = {
+                        if (!swiped) {
+                            swiped = true
+                            onArchive()
+                        }
+                    },
+                    onLongClick = onLongClick
+                )
+            }
         }
     }
 }
@@ -845,9 +926,19 @@ private fun ItemRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onEdit: (() -> Unit)? = null,
-    onArchive: (() -> Unit)? = null
+    onArchive: (() -> Unit)? = null,
+    leading: (@Composable () -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
-    ProductCard(item = item, onClick = onClick, modifier = modifier, onEdit = onEdit, onArchive = onArchive)
+    ProductCard(
+        item = item,
+        onClick = onClick,
+        modifier = modifier,
+        onEdit = onEdit,
+        onArchive = onArchive,
+        onLongClick = onLongClick,
+        leading = leading ?: { CategoryIconBadge(item) }
+    )
 }
 
 /** The circular category-icon badge every product card leads with, unless a search result swaps it for an attachment thumbnail. */
@@ -883,6 +974,7 @@ private fun CategoryIconBadge(item: Item) {
  * would be one signal too many for what needs to stay scannable across a
  * list of dozens of real items, not the mockup's 3-item demo.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProductCard(
     item: Item,
@@ -893,7 +985,15 @@ private fun ProductCard(
     // Overflow menu, so Archive/Edit don't require the swipe gesture --
     // null on call sites (e.g. search results) that don't manage a list.
     onEdit: (() -> Unit)? = null,
-    onArchive: (() -> Unit)? = null
+    onArchive: (() -> Unit)? = null,
+    // Multi-select (Phase 3): long-press enters selection mode -- only
+    // wired on the main grouped list (see SwipeableItemRow), never on
+    // search results. Card's own onClick constructor param has no long-
+    // click hook, so this switches to a plain Card + combinedClickable
+    // modifier instead, but only when a long-click handler is actually
+    // supplied -- every other call site keeps Card's built-in onClick
+    // path unchanged.
+    onLongClick: (() -> Unit)? = null
 ) {
     val daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), item.expiryDate)
     // Rolls over to whole months past 60 days out so a year-long warranty
@@ -903,14 +1003,46 @@ private fun ProductCard(
     val urgency = urgencyOf(item.expiryDate)
     val urgencyTint = urgency.color()
 
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = modifier.fillMaxWidth()
-    ) {
+    val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    val cardBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    val cardElevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    val cardShape = MaterialTheme.shapes.extraLarge
+
+    if (onLongClick != null) {
+        Card(
+            colors = cardColors,
+            border = cardBorder,
+            elevation = cardElevation,
+            shape = cardShape,
+            modifier = modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        ) {
+            ProductCardContent(item, daysLeft, monthsLeft, urgencyTint, leading, belowVendorContent, onEdit, onArchive)
+        }
+    } else {
+        Card(
+            onClick = onClick,
+            colors = cardColors,
+            border = cardBorder,
+            elevation = cardElevation,
+            shape = cardShape,
+            modifier = modifier.fillMaxWidth()
+        ) {
+            ProductCardContent(item, daysLeft, monthsLeft, urgencyTint, leading, belowVendorContent, onEdit, onArchive)
+        }
+    }
+}
+
+@Composable
+private fun ProductCardContent(
+    item: Item,
+    daysLeft: Long,
+    monthsLeft: Long,
+    urgencyTint: Color,
+    leading: @Composable () -> Unit,
+    belowVendorContent: (@Composable () -> Unit)?,
+    onEdit: (() -> Unit)?,
+    onArchive: (() -> Unit)?
+) {
         // IntrinsicSize.Min, not a Box+fillMaxHeight overlay: this Row sits
         // inside a LazyColumn item, which measures its content with an
         // effectively unbounded max height -- fillMaxHeight() would have
@@ -1040,7 +1172,6 @@ private fun ProductCard(
                 }
             }
         }
-    }
 }
 
 // ── Empty state ─────────────────────────────────────────────────────

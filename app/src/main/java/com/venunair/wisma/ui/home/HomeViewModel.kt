@@ -143,6 +143,48 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
         viewModelScope.launch { repository.unarchiveItem(itemId) }
     }
 
+    // ── Phase 3: multi-select bulk actions ───────────────────────────
+    // Selection mode is implicit: a non-empty set means the list is in
+    // selection mode (checkboxes shown, swipe/overflow disabled, tap
+    // toggles selection instead of opening the item). Deselecting the
+    // last item exits selection mode automatically -- same pattern
+    // Gmail/Photos use, rather than a separate boolean that can drift
+    // out of sync with the set actually being empty.
+
+    private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedIds: StateFlow<Set<Long>> = _selectedIds
+
+    fun toggleSelection(itemId: Long) {
+        _selectedIds.value = _selectedIds.value.let { current ->
+            if (itemId in current) current - itemId else current + itemId
+        }
+    }
+
+    /** Long-press entry point: starts selection mode with this one item
+     *  selected, even if selection mode wasn't already active. */
+    fun startSelection(itemId: Long) {
+        _selectedIds.value = setOf(itemId)
+    }
+
+    fun selectAllVisible() {
+        _selectedIds.value = groupedItems.value.let { g ->
+            (g.expiringSoon + g.renewalApproaching + g.active).map { it.id }.toSet()
+        }
+    }
+
+    fun clearSelection() {
+        _selectedIds.value = emptySet()
+    }
+
+    fun archiveSelected() {
+        val ids = _selectedIds.value.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.archiveItems(ids)
+            _selectedIds.value = emptySet()
+        }
+    }
+
     // ── Derived state ───────────────────────────────────────────────
 
     /** All distinct locations across active items, for the location filter. */

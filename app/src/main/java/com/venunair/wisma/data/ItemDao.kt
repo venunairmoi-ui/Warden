@@ -47,6 +47,12 @@ interface ItemDao {
     @Query("UPDATE items SET status = 'ARCHIVED', archivedAt = :archivedAt WHERE id = :id")
     suspend fun archive(id: Long, archivedAt: LocalDate)
 
+    // Multi-select bulk actions (Phase 3): one statement for the whole
+    // selection rather than looping archive() per id -- same end state,
+    // fewer round trips for someone archiving a big batch at once.
+    @Query("UPDATE items SET status = 'ARCHIVED', archivedAt = :archivedAt WHERE id IN (:ids)")
+    suspend fun archiveMany(ids: List<Long>, archivedAt: LocalDate)
+
     @Query("UPDATE items SET status = 'ACTIVE', archivedAt = NULL WHERE id = :id")
     suspend fun unarchive(id: Long)
 

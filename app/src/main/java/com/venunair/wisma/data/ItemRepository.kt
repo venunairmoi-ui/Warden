@@ -135,6 +135,9 @@ class ItemRepository(
 
     suspend fun archiveItem(id: Long) = itemDao.archive(id, LocalDate.now())
 
+    /** Phase 3: multi-select "Archive selected" bulk action. */
+    suspend fun archiveItems(ids: List<Long>) = itemDao.archiveMany(ids, LocalDate.now())
+
     // Sprint 8: undo for swipe-to-archive (the 5-second snackbar). Also the
     // Restore action on the Archived items recovery screen (2026-08-26) --
     // same call either way, since restoring IS undoing an archive.
