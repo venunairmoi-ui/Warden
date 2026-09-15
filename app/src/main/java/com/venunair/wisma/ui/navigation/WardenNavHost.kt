@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,11 +28,13 @@ import com.venunair.wisma.ui.autodetect.AutoDetectSuggestionsScreen
 import com.venunair.wisma.ui.home.HomeScreen
 import com.venunair.wisma.ui.home.HomeViewModel
 import com.venunair.wisma.ui.home.OverviewScreen
+import com.venunair.wisma.ui.home.ProductsAdaptiveScreen
 import com.venunair.wisma.ui.itemdetail.ItemDetailScreen
 import com.venunair.wisma.ui.onboarding.OnboardingScreen
 import com.venunair.wisma.ui.privacy.PrivacyScreen
 import com.venunair.wisma.ui.settings.SettingsScreen
 import com.venunair.wisma.ui.common.LocalRegion
+import androidx.window.core.layout.WindowSizeClass
 import kotlinx.coroutines.launch
 
 sealed class WardenDestination(val route: String) {
@@ -111,6 +115,7 @@ data class PendingShare(
  *  sluggish on repeated back-and-forth navigation. */
 private const val NAV_ANIM_DURATION = 300
 
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun WardenNavHost(
     repository: ItemRepository,
@@ -248,15 +253,36 @@ fun WardenNavHost(
                 runCatching { HomeViewModel.QuickFilter.valueOf(name) }.getOrNull()
             }
             val startInSearch = backStackEntry.arguments?.getBoolean("search") ?: false
-            HomeScreen(
-                repository = repository,
-                onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
-                onOpenItem = { id -> navController.navigate(WardenDestination.ItemDetail.detailRoute(id)) },
-                onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
-                onBack = { navController.popBackStack() },
-                initialFilter = filter,
-                startInSearch = startInSearch
-            )
+            // Phase 3 (2026-09-15): EXPANDED-width (840dp+, tablets/unfolded
+            // foldables) gets the two-pane list-detail layout; everything
+            // else gets the exact same single-pane code this already ran
+            // before that pass, byte for byte -- see ProductsAdaptiveScreen's
+            // own doc comment for why the split is drawn here rather than
+            // inside a single do-everything composable. No tablet/foldable
+            // device available in this environment to verify the expanded
+            // branch against real hardware.
+            val isExpandedWidth = currentWindowAdaptiveInfo().windowSizeClass
+                .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+            if (isExpandedWidth) {
+                ProductsAdaptiveScreen(
+                    repository = repository,
+                    onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
+                    onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
+                    onBack = { navController.popBackStack() },
+                    initialFilter = filter,
+                    startInSearch = startInSearch
+                )
+            } else {
+                HomeScreen(
+                    repository = repository,
+                    onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
+                    onOpenItem = { id -> navController.navigate(WardenDestination.ItemDetail.detailRoute(id)) },
+                    onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
+                    onBack = { navController.popBackStack() },
+                    initialFilter = filter,
+                    startInSearch = startInSearch
+                )
+            }
         }
         composable(WardenDestination.AutoDetectSuggestions.route) {
             AutoDetectSuggestionsScreen(

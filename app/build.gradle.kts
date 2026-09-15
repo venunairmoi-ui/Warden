@@ -539,6 +539,46 @@ android {
         versionCode = 53
         versionName = "0.15.13-pdf-password-support"
 
+        // 0.15.14-tablet-adaptive-layout: 2026-09-15 -- Phase 3 item,
+        // shipped earlier the same day, committed here now. Two-pane
+        // list-detail layout for tablets/foldables wide enough to cross
+        // the EXPANDED breakpoint (840dp), built on Google's Material3
+        // Adaptive library rather than hand-rolling pane arrangement.
+        // New: ui/home/ProductsAdaptiveScreen.kt wraps the EXISTING
+        // HomeScreen (list pane) and ItemDetailScreen (detail pane)
+        // composables unchanged, rewiring only their navigation callbacks
+        // to a local ListDetailPaneScaffoldNavigator instead of the outer
+        // NavController. WardenNavHost's Products destination now branches
+        // on currentWindowAdaptiveInfo().windowSizeClass.
+        // isWidthAtLeastBreakpoint(WIDTH_DP_EXPANDED_LOWER_BOUND): below
+        // that, the exact pre-existing single-pane code runs byte-for-byte
+        // unchanged (zero regression risk to the already device-verified
+        // phone experience); at or above it, routes to
+        // ProductsAdaptiveScreen. Editing still goes through the outer
+        // NavHost as a full screen on both paths, not folded into the pane
+        // scaffold's own navigator.
+        // API note: despite some docs describing a
+        // "NavigableListDetailPaneScaffold" convenience composable, no
+        // such function exists in the pinned 1.2.0 release (adaptive/
+        // adaptive-layout/adaptive-navigation deliberately NOT bumped to
+        // 1.3.0, which requires compileSdk 37 + AGP 9.1.0 -- a bigger
+        // toolchain jump than taking on blind) -- confirmed by extracting
+        // the real AAR/sources jars from Google's Maven repo rather than
+        // trusting a docs summary a second time this session.
+        // ListDetailPaneScaffold + rememberListDetailPaneScaffoldNavigator
+        // composed by hand instead, including manual back-handling.
+        // Verified: full compileDebugKotlin + signed assembleRelease (R8
+        // on) both succeed. Device-tested the COMPACT/phone path (open My
+        // Products, open an item, back) and confirmed it behaves exactly
+        // as before -- expected, since that code path is unchanged, but
+        // confirmed rather than assumed.
+        // NOT verified: the actual two-pane EXPANDED-width behavior itself
+        // -- no tablet, foldable, or emulator available in this
+        // environment. Check on a resizable emulator or real large-screen
+        // hardware before trusting this in production.
+        versionCode = 54
+        versionName = "0.15.14-tablet-adaptive-layout"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
