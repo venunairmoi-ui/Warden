@@ -76,7 +76,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -84,6 +86,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.venunair.warden.R
 import com.venunair.warden.capture.AttachmentStorage
 import com.venunair.warden.data.Attachment
 import com.venunair.warden.data.AttachmentMimeType
@@ -113,6 +116,7 @@ import com.venunair.warden.ui.attachment.AttachmentViewerDialog
 import com.venunair.warden.ui.common.decodeBitmapForOcr
 import com.venunair.warden.ui.common.toDateString
 import com.venunair.warden.ui.common.toLocalDateFromUtcMillis
+import com.venunair.warden.ui.common.toRelativeDueString
 import com.venunair.warden.ui.common.toUtcMillis
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -175,6 +179,15 @@ fun AddEditItemScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Resolved here (composable scope) rather than at their call sites,
+    // since those sites are non-composable lambdas/coroutines
+    // (handleNewAttachment, cameraPermissionLauncher's callback,
+    // pendingShareUri's LaunchedEffect) where stringResource() can't be
+    // called directly.
+    val ocrPrefillMessage = stringResource(R.string.ocr_prefill_toast)
+    val cameraPermissionError = stringResource(R.string.error_camera_permission)
+    val sharedItemDefaultName = stringResource(R.string.shared_item_default_name)
 
     val existingItem: Item? by if (itemId != null) {
         repository.observeItem(itemId).collectAsState(initial = null)
@@ -275,6 +288,15 @@ fun AddEditItemScreen(
     var billingCycleMenuExpanded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var datePickerTarget by remember { mutableStateOf<DateFieldTarget?>(null) }
+    // Inline per-field validation: shown once the field has been visited
+    // (name) or a save attempt was made (expiry, which has no "visit" of
+    // its own since it's a picker, not typed text), then kept live from
+    // then on so it clears itself as soon as the user fixes it -- instead
+    // of the old "one generic error banner only after Save" behavior.
+    var nameTouched by remember { mutableStateOf(false) }
+    var attemptedSave by remember { mutableStateOf(false) }
+    val nameError = (nameTouched || attemptedSave) && name.isBlank()
+    val expiryError = attemptedSave && expiryDate == null
 
     // Retaxonomy, 2026-08-25: subcategory options depend on the chosen
     // category (subcategoriesFor). If the user switches category and the
@@ -409,7 +431,7 @@ fun AddEditItemScreen(
                     amcNumber = parsed.referenceNumber; filledAnything = true
                 }
                 if (filledAnything) {
-                    scope.launch { snackbarHostState.showSnackbar("Some fields were filled in from the scan — please check them") }
+                    scope.launch { snackbarHostState.showSnackbar(ocrPrefillMessage) }
                 }
             }
 
@@ -452,7 +474,7 @@ fun AddEditItemScreen(
     LaunchedEffect(pendingShareUri) {
         pendingShareUri?.let { uriString ->
             if (name.isBlank()) {
-                name = pendingShareDisplayName?.let(::stripFileExtension) ?: "Shared item"
+                name = pendingShareDisplayName?.let(::stripFileExtension) ?: sharedItemDefaultName
             }
             if (expiryDate == null) {
                 expiryDate = LocalDate.now().plusYears(1)
@@ -481,7 +503,7 @@ fun AddEditItemScreen(
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) onLaunchCamera() else error = "Camera permission is needed to take a photo."
+        if (granted) onLaunchCamera() else error = cameraPermissionError
     }
 
     // ── Sprint 8: Unsaved changes back guard ──────────────────────
@@ -501,11 +523,11 @@ fun AddEditItemScreen(
                 title = {
                     Column {
                         Text(
-                            if (itemId == null) "Add item" else "Edit item",
+                            stringResource(if (itemId == null) R.string.add_item_title else R.string.edit_item_title),
                             style = MaterialTheme.typography.headlineSmall
                         )
                         Text(
-                            if (itemId == null) "Track a new item" else "Update the details",
+                            stringResource(if (itemId == null) R.string.add_item_subtitle else R.string.edit_item_subtitle),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -571,7 +593,7 @@ fun AddEditItemScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            "Scan / pick / attach instead of typing",
+                            stringResource(R.string.scan_prompt_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -590,7 +612,7 @@ fun AddEditItemScreen(
                                 if (granted) onLaunchCamera() else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                             }
                         ) {
-                            Icon(Icons.Filled.PhotoCamera, contentDescription = "Take photo")
+                            Icon(Icons.Filled.PhotoCamera, contentDescription = stringResource(R.string.action_take_photo))
                         }
                         OutlinedIconButton(
                             onClick = {
@@ -599,12 +621,12 @@ fun AddEditItemScreen(
                                 )
                             }
                         ) {
-                            Icon(Icons.Filled.PhotoLibrary, contentDescription = "Choose from gallery")
+                            Icon(Icons.Filled.PhotoLibrary, contentDescription = stringResource(R.string.action_choose_gallery))
                         }
                         OutlinedIconButton(
                             onClick = { pdfLauncher.launch(arrayOf("application/pdf")) }
                         ) {
-                            Icon(Icons.Filled.PictureAsPdf, contentDescription = "Attach PDF")
+                            Icon(Icons.Filled.PictureAsPdf, contentDescription = stringResource(R.string.action_attach_pdf))
                         }
                     }
                     AttachmentThumbnailRow(
@@ -628,17 +650,23 @@ fun AddEditItemScreen(
             }
 
             // ── Core fields ─────────────────────────────────────────
-            FormSectionCard(title = "Item information") {
+            FormSectionCard(title = stringResource(R.string.section_item_information)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name (e.g. LG Refrigerator) *") },
-                    modifier = Modifier.fillMaxWidth()
+                    label = { Text(stringResource(R.string.field_name)) },
+                    isError = nameError,
+                    supportingText = if (nameError) {
+                        { Text(stringResource(R.string.error_name_required)) }
+                    } else null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { if (!it.isFocused) nameTouched = true }
                 )
                 OutlinedTextField(
                     value = vendor,
                     onValueChange = { vendor = it },
-                    label = { Text("Vendor / brand") },
+                    label = { Text(stringResource(R.string.field_vendor)) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -651,7 +679,7 @@ fun AddEditItemScreen(
                         value = category.displayName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Category") },
+                        label = { Text(stringResource(R.string.field_category)) },
                         modifier = Modifier
                             .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                             .fillMaxWidth()
@@ -688,8 +716,8 @@ fun AddEditItemScreen(
                             value = subCategory,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Subcategory") },
-                            placeholder = { Text("Optional") },
+                            label = { Text(stringResource(R.string.field_subcategory)) },
+                            placeholder = { Text(stringResource(R.string.placeholder_optional)) },
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                 .fillMaxWidth()
@@ -730,7 +758,7 @@ fun AddEditItemScreen(
                         value = itemType.displayName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Product or service?") },
+                        label = { Text(stringResource(R.string.field_product_or_service)) },
                         modifier = Modifier
                             .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                             .fillMaxWidth()
@@ -753,28 +781,34 @@ fun AddEditItemScreen(
                 }
 
                 DateField(
-                    label = "Purchase date (optional)",
+                    label = stringResource(R.string.field_purchase_date),
                     date = purchaseDate,
                     onClick = { datePickerTarget = DateFieldTarget.PURCHASE },
                     modifier = Modifier.fillMaxWidth()
                 )
                 DateField(
-                    label = "Expiry / next due date *",
+                    label = stringResource(R.string.field_expiry_date),
                     date = expiryDate,
                     onClick = { datePickerTarget = DateFieldTarget.EXPIRY },
+                    isError = expiryError,
+                    supportingText = if (expiryError) {
+                        stringResource(R.string.error_expiry_required)
+                    } else {
+                        expiryDate?.toRelativeDueString()
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
                     value = costText,
                     onValueChange = { costText = it },
-                    label = { Text("${category.costLabel()} (optional)") },
+                    label = { Text(stringResource(R.string.label_optional_suffix, category.costLabel())) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = amcNumber,
                     onValueChange = { amcNumber = it },
-                    label = { Text("${category.referenceNumberLabel()} (optional)") },
+                    label = { Text(stringResource(R.string.label_optional_suffix, category.referenceNumberLabel())) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 // Product/Service reintroduction, 2026-08-25: AMC-only --
@@ -785,7 +819,7 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = visitsIncludedText,
                         onValueChange = { visitsIncludedText = it },
-                        label = { Text("Visits included per year (optional)") },
+                        label = { Text(stringResource(R.string.field_visits_included)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -799,7 +833,7 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = serviceIntervalText,
                         onValueChange = { serviceIntervalText = it },
-                        label = { Text("Service interval, months (optional)") },
+                        label = { Text(stringResource(R.string.field_service_interval)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -810,7 +844,7 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = serviceProviderContact,
                         onValueChange = { serviceProviderContact = it },
-                        label = { Text("Service provider contact (optional)") },
+                        label = { Text(stringResource(R.string.field_service_provider_contact)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -827,7 +861,7 @@ fun AddEditItemScreen(
                             value = warrantyType?.displayName ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Warranty type (optional)") },
+                            label = { Text(stringResource(R.string.field_warranty_type)) },
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                 .fillMaxWidth()
@@ -853,14 +887,14 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = nomineeName,
                         onValueChange = { nomineeName = it },
-                        label = { Text("Nominee (optional)") },
+                        label = { Text(stringResource(R.string.field_nominee)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 OutlinedTextField(
                     value = location,
                     onValueChange = { location = it },
-                    label = { Text("Location (e.g. Home, Office)") },
+                    label = { Text(stringResource(R.string.field_location)) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -887,29 +921,29 @@ fun AddEditItemScreen(
             val showBilling = category != ItemCategory.WARRANTY
 
             AnimatedVisibility(visible = showProductDetails) {
-                FormSectionCard(title = "Product details") {
+                FormSectionCard(title = stringResource(R.string.section_product_details)) {
                     OutlinedTextField(
                         value = serialNumber,
                         onValueChange = { serialNumber = it },
-                        label = { Text("Serial number") },
+                        label = { Text(stringResource(R.string.field_serial_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = modelNumber,
                         onValueChange = { modelNumber = it },
-                        label = { Text("Model number") },
+                        label = { Text(stringResource(R.string.field_model_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = retailer,
                         onValueChange = { retailer = it },
-                        label = { Text("Retailer / store") },
+                        label = { Text(stringResource(R.string.field_retailer)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = invoiceNumber,
                         onValueChange = { invoiceNumber = it },
-                        label = { Text("Invoice number") },
+                        label = { Text(stringResource(R.string.field_invoice_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -969,7 +1003,7 @@ fun AddEditItemScreen(
                         OutlinedTextField(
                             value = planTier,
                             onValueChange = { planTier = it },
-                            label = { Text("${category.planTierLabel()} (optional)") },
+                            label = { Text(stringResource(R.string.label_optional_suffix, category.planTierLabel())) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -979,7 +1013,7 @@ fun AddEditItemScreen(
                         OutlinedTextField(
                             value = membersCoveredText,
                             onValueChange = { membersCoveredText = it },
-                            label = { Text("Members covered (optional)") },
+                            label = { Text(stringResource(R.string.field_members_covered)) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -997,7 +1031,7 @@ fun AddEditItemScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Auto-renews",
+                            stringResource(R.string.field_auto_renew),
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Switch(
@@ -1009,9 +1043,9 @@ fun AddEditItemScreen(
             }
 
             // ── Sprint 8: Reminder intervals ────────────────────────
-            FormSectionCard(title = "Reminders") {
+            FormSectionCard(title = stringResource(R.string.section_reminders)) {
                 Text(
-                    "Get notified before expiry",
+                    stringResource(R.string.reminders_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1027,7 +1061,11 @@ fun AddEditItemScreen(
                             onClick = { reminderChecked[days] = !(reminderChecked[days] ?: false) },
                             label = {
                                 Text(
-                                    (if (days == 1) "1 day" else "$days days").uppercase(),
+                                    (if (days == 1) {
+                                        stringResource(R.string.reminder_day)
+                                    } else {
+                                        stringResource(R.string.reminder_days, days)
+                                    }).uppercase(),
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             },
@@ -1056,17 +1094,17 @@ fun AddEditItemScreen(
             // Notes is free text and reads better with room to breathe,
             // same reasoning as before -- it just no longer shares this
             // card with Attachments.
-            FormSectionCard(title = "Notes") {
+            FormSectionCard(title = stringResource(R.string.detail_notes)) {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes (optional)") },
+                    label = { Text(stringResource(R.string.field_notes)) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
             Text(
-                "* Required",
+                stringResource(R.string.required_fields),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1077,9 +1115,10 @@ fun AddEditItemScreen(
             // matches add_new_product/code.html's "Add Product ✓" CTA.
             Button(
                 onClick = {
+                    attemptedSave = true
                     when {
-                        name.isBlank() -> error = "Name is required."
-                        expiryDate == null -> error = "Pick an expiry / next due date."
+                        name.isBlank() -> Unit
+                        expiryDate == null -> Unit
                         else -> {
                             error = null
                             viewModel.save(
@@ -1143,7 +1182,10 @@ fun AddEditItemScreen(
                     .fillMaxWidth()
                     .height(56.dp)
             ) {
-                Text(if (itemId == null) "Add item" else "Save changes", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(if (itemId == null) R.string.add_item_title else R.string.save_changes_button),
+                    style = MaterialTheme.typography.titleMedium
+                )
                 Spacer(Modifier.width(8.dp))
                 Icon(Icons.Filled.Check, contentDescription = null)
             }
@@ -1173,10 +1215,10 @@ fun AddEditItemScreen(
                         }
                     }
                     datePickerTarget = null
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.ok_button)) }
             },
             dismissButton = {
-                TextButton(onClick = { datePickerTarget = null }) { Text("Cancel") }
+                TextButton(onClick = { datePickerTarget = null }) { Text(stringResource(R.string.cancel_button)) }
             }
         ) {
             DatePicker(state = pickerState)
@@ -1207,16 +1249,16 @@ fun AddEditItemScreen(
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
-            title = { Text("Discard changes?") },
-            text = { Text("You have unsaved changes. Are you sure you want to go back?") },
+            title = { Text(stringResource(R.string.discard_changes_title)) },
+            text = { Text(stringResource(R.string.discard_changes_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDiscardDialog = false
                     onDone()
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.discard_button)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") }
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.keep_editing_button)) }
             }
         )
     }
@@ -1270,7 +1312,9 @@ private fun DateField(
     label: String,
     date: LocalDate?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isError: Boolean = false,
+    supportingText: String? = null
 ) {
     Box(modifier = modifier) {
         OutlinedTextField(
@@ -1278,7 +1322,17 @@ private fun DateField(
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
-            trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = "Pick date") },
+            isError = isError,
+            supportingText = when {
+                isError && supportingText != null -> {
+                    { Text(supportingText, color = MaterialTheme.colorScheme.error) }
+                }
+                !isError && supportingText != null -> {
+                    { Text(supportingText) }
+                }
+                else -> null
+            },
+            trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = stringResource(R.string.pick_date)) },
             modifier = Modifier.fillMaxWidth()
         )
         Box(

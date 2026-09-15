@@ -248,6 +248,7 @@ fun WardenNavHost(
                 repository = repository,
                 onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
                 onOpenItem = { id -> navController.navigate(WardenDestination.ItemDetail.detailRoute(id)) },
+                onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
                 onBack = { navController.popBackStack() },
                 initialFilter = filter,
                 startInSearch = startInSearch
@@ -395,7 +396,8 @@ fun WardenNavHost(
                 // top of Home), but kept as its own callback so this
                 // screen's API stays self-documenting about which action
                 // triggered the pop.
-                onDeleted = { navController.popBackStack() }
+                onDeleted = { navController.popBackStack() },
+                onArchived = { navController.popBackStack() }
             )
         }
     }

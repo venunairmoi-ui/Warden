@@ -361,6 +361,32 @@ android {
         versionCode = 47
         versionName = "0.15.7-one-splash"
 
+        // 0.15.8-ui-commercial-phase1: 2026-09-15 -- Phase 1 of the
+        // "Warden UI and Commercial-Readiness Plan" doc's action plan
+        // (consultant assessment verified against the actual code first;
+        // most of the doc's UI-polish complaints turned out already fixed,
+        // these were the confirmed remaining gaps):
+        // - Product cards and the item detail screen gained a Archive/Edit
+        //   overflow menu, so swipe is no longer the only way to archive
+        //   (detail screen previously had no archive path at all).
+        // - Add/Edit form's Name and Expiry fields now show their own
+        //   inline error text instead of one generic banner at the bottom.
+        // - Added toRelativeDueString() ("Due in 11 months", "Expired 3
+        //   days ago") next to the exact date on the Expiry field; product
+        //   cards roll "334 DAYS REMAINING" over to "11 MONTHS REMAINING"
+        //   past 60 days out.
+        // - Externalized ~78 hardcoded strings in HomeScreen.kt/
+        //   AddEditItemScreen.kt into strings.xml (29 new entries, ~25
+        //   pre-existing ones that were sitting unused).
+        // Deliberately NOT touched: the debug/testing overflow menu (Check
+        // reminders now / Run scan now / Add test records) -- the doc
+        // recommended hiding it from release builds, but that's a reversal
+        // of an explicit prior decision (see 0.15.4's comment above,
+        // "asked, not assumed"), so it was left showing in every build per
+        // the user's call when re-asked this session.
+        versionCode = 48
+        versionName = "0.15.8-ui-commercial-phase1"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

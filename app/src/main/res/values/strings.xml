@@ -44,6 +44,25 @@
     <string name="error_expiry_required">Pick an expiry / next due date.</string>
     <string name="error_camera_permission">Camera permission is needed to take a photo.</string>
     <string name="ocr_prefill_toast">Some fields were filled in from the scan — please check them</string>
+    <string name="add_item_subtitle">Track a new item</string>
+    <string name="edit_item_subtitle">Update the details</string>
+    <string name="save_changes_button">Save changes</string>
+    <string name="scan_prompt_title">Scan / pick / attach instead of typing</string>
+    <string name="section_item_information">Item information</string>
+    <string name="field_subcategory">Subcategory</string>
+    <string name="placeholder_optional">Optional</string>
+    <string name="field_product_or_service">Product or service?</string>
+    <!-- Shared "label (optional)" template for fields whose label prefix is
+         category-dependent (costLabel/referenceNumberLabel/planTierLabel in
+         data/ItemCategory.kt); only the constant "(optional)" suffix is
+         externalized here, not the dynamic prefix. -->
+    <string name="label_optional_suffix">%1$s (optional)</string>
+    <string name="field_visits_included">Visits included per year (optional)</string>
+    <string name="field_service_interval">Service interval, months (optional)</string>
+    <string name="field_service_provider_contact">Service provider contact (optional)</string>
+    <string name="field_warranty_type">Warranty type (optional)</string>
+    <string name="field_nominee">Nominee (optional)</string>
+    <string name="field_members_covered">Members covered (optional)</string>
 
     <!-- Attachments -->
     <string name="attachments_label">Attachments</string>
@@ -192,4 +211,21 @@
     <string name="onboarding_page2_body">Photograph a receipt or warranty card and Wisma pulls out the dates and numbers for you.</string>
     <string name="onboarding_page3_headline">Never miss an expiry.</string>
     <string name="onboarding_page3_body">Reminders fire before anything lapses — configurable per item, entirely on your phone.</string>
+
+    <!-- Phase 1 string cleanup: My Products (filtered list) filter titles,
+         search, and card overflow menu -->
+    <string name="home_all_products_title">My Products</string>
+    <string name="filter_due_soon_title">Due soon</string>
+    <string name="filter_recurring_costs_title">Recurring costs</string>
+    <string name="content_desc_search">Search</string>
+    <string name="content_desc_clear_filter">Clear filter</string>
+    <string name="content_desc_clear_search">Clear search</string>
+    <string name="content_desc_more_actions">More actions for %1$s</string>
+    <string name="action_archive">Archive</string>
+    <string name="days_remaining_label">%1$d DAYS REMAINING</string>
+    <string name="months_remaining_label">%1$d MONTHS REMAINING</string>
+    <string name="home_search_placeholder">Search items, vendors, receipts…</string>
+    <string name="search_min_chars_hint">Type at least 2 characters to search</string>
+    <string name="search_no_results_for">No results for \"%1$s\"</string>
+    <string name="content_desc_attachment">Attachment</string>
 </resources>

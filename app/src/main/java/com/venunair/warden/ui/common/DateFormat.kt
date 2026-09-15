@@ -7,6 +7,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 /**
  * dd-MM-yyyy — the format Indian users expect. Purely a presentation-layer
@@ -69,3 +70,32 @@ fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toE
 
 fun Long.toLocalDateFromUtcMillis(): LocalDate =
     Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+/**
+ * Sentence-style relative phrasing ("Expires in 11 months", "Due today",
+ * "Expired 3 days ago") for pairing next to the exact date, not replacing
+ * it -- callers still show the formatted date alongside this. Rolls over
+ * to months past 60 days out (or 60 days past) so a year-long warranty
+ * doesn't read as "365 days" the way [ChronoUnit.DAYS] alone would.
+ */
+fun LocalDate.toRelativeDueString(today: LocalDate = LocalDate.now()): String {
+    val days = ChronoUnit.DAYS.between(today, this)
+    return when {
+        days == 0L -> "Due today"
+        days > 0 -> if (days < 60) {
+            "Due in $days day${if (days == 1L) "" else "s"}"
+        } else {
+            val months = ChronoUnit.MONTHS.between(today, this)
+            "Due in $months month${if (months == 1L) "" else "s"}"
+        }
+        else -> {
+            val agoDays = -days
+            if (agoDays < 60) {
+                "Expired $agoDays day${if (agoDays == 1L) "" else "s"} ago"
+            } else {
+                val agoMonths = ChronoUnit.MONTHS.between(this, today)
+                "Expired $agoMonths month${if (agoMonths == 1L) "" else "s"} ago"
+            }
+        }
+    }
+}

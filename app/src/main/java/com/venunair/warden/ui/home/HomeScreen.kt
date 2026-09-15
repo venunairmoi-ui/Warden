@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ImageSearch
@@ -96,6 +97,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -153,6 +155,7 @@ fun HomeScreen(
     repository: ItemRepository,
     onAddItem: () -> Unit,
     onOpenItem: (Long) -> Unit,
+    onEditItem: (Long) -> Unit,
     onBack: () -> Unit,
     // Overview screen pass, 2026-08-25: set when this screen was reached by
     // tapping a stat tile/card on OverviewScreen -- applied once below via
@@ -189,13 +192,20 @@ fun HomeScreen(
     var archivedItemId by remember { mutableStateOf(0L) }
     var archivedItemName by remember { mutableStateOf("") }
     var archiveSeq by remember { mutableIntStateOf(0) }
+    // Resolved here (composable scope), then referenced inside the
+    // LaunchedEffect coroutine below, since stringResource() can't be
+    // called directly from non-composable code -- recomputed on every
+    // recomposition, so the closure LaunchedEffect(archiveSeq) captures on
+    // its next relaunch always sees the current archivedItemName.
+    val archivedSnackbarMessage = stringResource(R.string.archived_snackbar, archivedItemName)
+    val undoActionLabel = stringResource(R.string.undo)
 
     LaunchedEffect(archiveSeq) {
         if (archiveSeq == 0) return@LaunchedEffect
         val itemId = archivedItemId
         val result = snackbarHostState.showSnackbar(
-            message = "$archivedItemName archived",
-            actionLabel = "Undo",
+            message = archivedSnackbarMessage,
+            actionLabel = undoActionLabel,
             duration = SnackbarDuration.Short
         )
         if (result == SnackbarResult.ActionPerformed) {
@@ -214,17 +224,17 @@ fun HomeScreen(
     // filter that's already active clears it, same as re-tapping a
     // selected FilterChip.
     val filterTitle = when (quickFilter) {
-        null -> "My Products"
-        HomeViewModel.QuickFilter.ACTIVE -> "Active"
-        HomeViewModel.QuickFilter.DUE_SOON -> "Due soon"
-        HomeViewModel.QuickFilter.EXPIRED -> "Expired"
-        HomeViewModel.QuickFilter.AT_RISK -> "At risk this month"
+        null -> stringResource(R.string.home_all_products_title)
+        HomeViewModel.QuickFilter.ACTIVE -> stringResource(R.string.section_active)
+        HomeViewModel.QuickFilter.DUE_SOON -> stringResource(R.string.filter_due_soon_title)
+        HomeViewModel.QuickFilter.EXPIRED -> stringResource(R.string.expired_label)
+        HomeViewModel.QuickFilter.AT_RISK -> stringResource(R.string.summary_at_risk)
         // Renamed 2026-09-01 alongside the Dashboard card (was "Monthly
         // subscriptions") -- the underlying QuickFilter still matches
         // Item.isRecurringPayment across every category (AMC, Insurance,
         // Membership, Subscription), not literal subscriptions only, so
         // this title needs to stay honest about that too.
-        HomeViewModel.QuickFilter.SUBSCRIPTIONS -> "Recurring costs"
+        HomeViewModel.QuickFilter.SUBSCRIPTIONS -> stringResource(R.string.filter_recurring_costs_title)
     }
 
     Scaffold(
@@ -234,12 +244,12 @@ fun HomeScreen(
                 title = { Text(filterTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.setSearchActive(true) }) {
-                        Icon(Icons.Filled.Search, contentDescription = "Search")
+                        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.content_desc_search))
                     }
                     // quickFilter captured via a local val inside the let,
                     // rather than smart-cast across the IconButton's onClick
@@ -248,7 +258,7 @@ fun HomeScreen(
                     // a captured closure.
                     quickFilter?.let { activeFilter ->
                         IconButton(onClick = { viewModel.toggleQuickFilter(activeFilter) }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Clear filter")
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.content_desc_clear_filter))
                         }
                     }
                 }
@@ -259,7 +269,7 @@ fun HomeScreen(
                 ExtendedFloatingActionButton(
                     onClick = onAddItem,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Add") }
+                    text = { Text(stringResource(R.string.add_button)) }
                 )
             }
         }
@@ -304,7 +314,7 @@ fun HomeScreen(
                         item(key = "header_expiring") {
                             SectionHeader(
                                 icon = Icons.Filled.Warning,
-                                title = "Expiring soon",
+                                title = stringResource(R.string.section_expiring_soon),
                                 count = grouped.expiringSoon.size,
                                 tintColor = MaterialTheme.colorScheme.error
                             )
@@ -326,7 +336,8 @@ fun HomeScreen(
                                     archivedItemId = item.id
                                     archivedItemName = item.name
                                     archiveSeq++
-                                }
+                                },
+                                onEdit = { onEditItem(item.id) }
                             )
                         }
                     }
@@ -336,7 +347,7 @@ fun HomeScreen(
                         item(key = "header_renewal") {
                             SectionHeader(
                                 icon = Icons.Filled.Autorenew,
-                                title = "Renewal approaching",
+                                title = stringResource(R.string.section_renewal_approaching),
                                 count = grouped.renewalApproaching.size,
                                 tintColor = MaterialTheme.colorScheme.secondary
                             )
@@ -358,7 +369,8 @@ fun HomeScreen(
                                     archivedItemId = item.id
                                     archivedItemName = item.name
                                     archiveSeq++
-                                }
+                                },
+                                onEdit = { onEditItem(item.id) }
                             )
                         }
                     }
@@ -368,7 +380,7 @@ fun HomeScreen(
                         item(key = "header_active") {
                             SectionHeader(
                                 icon = Icons.Filled.Shield,
-                                title = "Active",
+                                title = stringResource(R.string.section_active),
                                 count = grouped.active.size,
                                 tintColor = MaterialTheme.colorScheme.tertiary
                             )
@@ -390,7 +402,8 @@ fun HomeScreen(
                                     archivedItemId = item.id
                                     archivedItemName = item.name
                                     archiveSeq++
-                                }
+                                },
+                                onEdit = { onEditItem(item.id) }
                             )
                         }
                     }
@@ -403,7 +416,7 @@ fun HomeScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    "No items match the selected filters.",
+                                    stringResource(R.string.no_filter_results),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -418,7 +431,7 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "Type at least 2 characters to search",
+                        stringResource(R.string.search_min_chars_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -447,14 +460,14 @@ private fun SearchBar(
         value = query,
         onValueChange = onQueryChange,
         placeholder = {
-            Text("Search items, vendors, receipts…", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.home_search_placeholder), style = MaterialTheme.typography.bodyMedium)
         },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = {
             IconButton(onClick = {
                 if (query.isNotEmpty()) onQueryChange("") else onClose()
             }) {
-                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.content_desc_clear_search))
             }
         },
         singleLine = true,
@@ -485,7 +498,7 @@ private fun SearchResultsList(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                "No results for \"$query\"",
+                stringResource(R.string.search_no_results_for, query),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -519,7 +532,7 @@ private fun SearchResultRow(result: SearchResult, onClick: () -> Unit, modifier:
             if (result.attachmentThumbnail != null) {
                 AsyncImage(
                     model = result.attachmentThumbnail,
-                    contentDescription = "Attachment",
+                    contentDescription = stringResource(R.string.content_desc_attachment),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(40.dp)
@@ -649,7 +662,7 @@ private fun LocationFilter(
             onClick = { expanded = true },
             label = {
                 Text(
-                    (selectedLocation ?: "All locations").uppercase(),
+                    (selectedLocation ?: stringResource(R.string.filter_all_locations)).uppercase(),
                     style = MaterialTheme.typography.labelSmall
                 )
             },
@@ -676,7 +689,7 @@ private fun LocationFilter(
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("All locations") },
+                text = { Text(stringResource(R.string.filter_all_locations)) },
                 onClick = { onSelect(null); expanded = false }
             )
             locations.forEach { loc ->
@@ -740,7 +753,8 @@ private fun SwipeableItemRow(
     index: Int,
     skipAnimation: Boolean = false,
     onClick: () -> Unit,
-    onArchive: () -> Unit
+    onArchive: () -> Unit,
+    onEdit: (() -> Unit)? = null
 ) {
     var visible by remember { mutableStateOf(skipAnimation) }
     LaunchedEffect(item.id) {
@@ -793,12 +807,12 @@ private fun SwipeableItemRow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Filled.Archive,
-                            contentDescription = "Archive",
+                            contentDescription = stringResource(R.string.action_archive),
                             tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Archive",
+                            stringResource(R.string.action_archive),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -810,7 +824,14 @@ private fun SwipeableItemRow(
             ItemRow(
                 item = item,
                 onClick = onClick,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                onEdit = onEdit,
+                onArchive = {
+                    if (!swiped) {
+                        swiped = true
+                        onArchive()
+                    }
+                }
             )
         }
     }
@@ -819,8 +840,14 @@ private fun SwipeableItemRow(
 // ── Item row ────────────────────────────────────────────────────────
 
 @Composable
-private fun ItemRow(item: Item, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    ProductCard(item = item, onClick = onClick, modifier = modifier)
+private fun ItemRow(
+    item: Item,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onEdit: (() -> Unit)? = null,
+    onArchive: (() -> Unit)? = null
+) {
+    ProductCard(item = item, onClick = onClick, modifier = modifier, onEdit = onEdit, onArchive = onArchive)
 }
 
 /** The circular category-icon badge every product card leads with, unless a search result swaps it for an attachment thumbnail. */
@@ -862,9 +889,17 @@ private fun ProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leading: @Composable () -> Unit = { CategoryIconBadge(item) },
-    belowVendorContent: (@Composable () -> Unit)? = null
+    belowVendorContent: (@Composable () -> Unit)? = null,
+    // Overflow menu, so Archive/Edit don't require the swipe gesture --
+    // null on call sites (e.g. search results) that don't manage a list.
+    onEdit: (() -> Unit)? = null,
+    onArchive: (() -> Unit)? = null
 ) {
     val daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), item.expiryDate)
+    // Rolls over to whole months past 60 days out so a year-long warranty
+    // reads as "11 MONTHS REMAINING" rather than "334 DAYS REMAINING" --
+    // the exact date stays visible in the row below regardless.
+    val monthsLeft = ChronoUnit.MONTHS.between(LocalDate.now(), item.expiryDate)
     val urgency = urgencyOf(item.expiryDate)
     val urgencyTint = urgency.color()
 
@@ -932,6 +967,45 @@ private fun ProductCard(
                     // in the footer). Removed; the accent bar (color) +
                     // footer text (color + label) already carry the status,
                     // once each.
+                    if (onEdit != null || onArchive != null) {
+                        var menuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.content_desc_more_actions, item.name)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                onEdit?.let { edit ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_edit)) },
+                                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            edit()
+                                        }
+                                    )
+                                }
+                                onArchive?.let { archive ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.action_archive)) },
+                                        leadingIcon = { Icon(Icons.Filled.Archive, contentDescription = null) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            archive()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -943,9 +1017,10 @@ private fun ProductCard(
                 ) {
                     Text(
                         text = when {
-                            daysLeft < 0 -> "EXPIRED"
-                            daysLeft == 0L -> "DUE TODAY"
-                            else -> "$daysLeft DAYS REMAINING"
+                            daysLeft < 0 -> stringResource(R.string.expired_label).uppercase()
+                            daysLeft == 0L -> stringResource(R.string.due_today_label).uppercase()
+                            daysLeft < 60 -> stringResource(R.string.days_remaining_label, daysLeft)
+                            else -> stringResource(R.string.months_remaining_label, monthsLeft)
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = urgencyTint
@@ -985,13 +1060,13 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                "Nothing tracked yet",
+                stringResource(R.string.empty_state_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Add your first warranty, subscription,\nor service contract to keep it safe.",
+                stringResource(R.string.empty_state_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

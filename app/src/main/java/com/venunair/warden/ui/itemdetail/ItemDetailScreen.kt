@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
@@ -153,7 +154,11 @@ fun ItemDetailScreen(
     itemId: Long,
     onEdit: () -> Unit,
     onBack: () -> Unit,
-    onDeleted: () -> Unit
+    onDeleted: () -> Unit,
+    // Kept distinct from onDeleted (same pop-back effect today) so this
+    // screen's API stays self-documenting about which action triggered it --
+    // matches onDeleted's own doc comment at the call site in WardenNavHost.
+    onArchived: () -> Unit
 ) {
     val item by repository.observeItem(itemId).collectAsState(initial = null)
     val context = LocalContext.current
@@ -188,6 +193,19 @@ fun ItemDetailScreen(
                     }
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    }
+                    IconButton(
+                        onClick = {
+                            item?.let { current ->
+                                scope.launch {
+                                    repository.archiveItem(current.id)
+                                    onArchived()
+                                }
+                            }
+                        },
+                        enabled = item != null
+                    ) {
+                        Icon(Icons.Default.Archive, contentDescription = "Archive")
                     }
                     IconButton(onClick = { showDeleteConfirm = true }, enabled = item != null) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete")
