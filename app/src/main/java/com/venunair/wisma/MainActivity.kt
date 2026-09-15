@@ -1,4 +1,4 @@
-package com.venunair.warden
+package com.venunair.wisma
 
 import android.Manifest
 import android.content.Intent
@@ -17,11 +17,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
-import com.venunair.warden.data.ThemeMode
-import com.venunair.warden.data.UserPreferences
-import com.venunair.warden.ui.navigation.PendingShare
-import com.venunair.warden.ui.navigation.WardenNavHost
-import com.venunair.warden.ui.theme.WardenTheme
+import com.venunair.wisma.data.ThemeMode
+import com.venunair.wisma.data.UserPreferences
+import com.venunair.wisma.ui.navigation.PendingShare
+import com.venunair.wisma.ui.navigation.WardenNavHost
+import com.venunair.wisma.ui.theme.WardenTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 

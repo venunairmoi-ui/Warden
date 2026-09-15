@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.theme
+package com.venunair.wisma.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

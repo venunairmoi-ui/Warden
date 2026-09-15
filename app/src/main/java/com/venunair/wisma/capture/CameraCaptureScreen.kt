@@ -1,4 +1,4 @@
-package com.venunair.warden.capture
+package com.venunair.wisma.capture
 
 import android.net.Uri
 import androidx.camera.core.CameraSelector

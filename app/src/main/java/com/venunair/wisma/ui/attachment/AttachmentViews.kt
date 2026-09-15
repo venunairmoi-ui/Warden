@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.attachment
+package com.venunair.wisma.ui.attachment
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -56,14 +56,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import com.venunair.warden.data.Attachment
-import com.venunair.warden.data.AttachmentMimeType
-import com.venunair.warden.ocr.ParsedReceiptFields
-import com.venunair.warden.ocr.parseReceiptFields
-import com.venunair.warden.pdf.PdfPageRenderer
-import com.venunair.warden.ui.common.rememberLocalThumbnail
-import com.venunair.warden.ui.common.toCurrencyString
-import com.venunair.warden.ui.common.toDateString
+import com.venunair.wisma.data.Attachment
+import com.venunair.wisma.data.AttachmentMimeType
+import com.venunair.wisma.ocr.ParsedReceiptFields
+import com.venunair.wisma.ocr.parseReceiptFields
+import com.venunair.wisma.pdf.PdfPageRenderer
+import com.venunair.wisma.ui.common.rememberLocalThumbnail
+import com.venunair.wisma.ui.common.toCurrencyString
+import com.venunair.wisma.ui.common.toDateString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate

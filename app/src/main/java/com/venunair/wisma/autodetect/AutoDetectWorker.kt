@@ -1,4 +1,4 @@
-package com.venunair.warden.autodetect
+package com.venunair.wisma.autodetect
 
 import android.Manifest
 import android.content.ContentUris
@@ -9,11 +9,11 @@ import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.venunair.warden.WardenApplication
-import com.venunair.warden.data.PendingAutoDetectSuggestion
-import com.venunair.warden.ocr.recognizeText
-import com.venunair.warden.reminders.NotificationHelper
-import com.venunair.warden.ui.common.decodeBitmapForOcr
+import com.venunair.wisma.WardenApplication
+import com.venunair.wisma.data.PendingAutoDetectSuggestion
+import com.venunair.wisma.ocr.recognizeText
+import com.venunair.wisma.reminders.NotificationHelper
+import com.venunair.wisma.ui.common.decodeBitmapForOcr
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 

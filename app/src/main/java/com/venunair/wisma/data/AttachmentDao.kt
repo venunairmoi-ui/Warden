@@ -1,4 +1,4 @@
-package com.venunair.warden.data
+package com.venunair.wisma.data
 
 import androidx.room.Dao
 import androidx.room.Delete

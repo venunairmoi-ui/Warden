@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.navigation
+package com.venunair.wisma.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
@@ -16,21 +16,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.venunair.warden.capture.CameraCaptureScreen
-import com.venunair.warden.data.ItemRepository
-import com.venunair.warden.data.SettingsRepository
-import com.venunair.warden.data.UserPreferences
-import com.venunair.warden.ui.additem.AddEditItemScreen
-import com.venunair.warden.ui.archive.ArchivedItemsScreen
-import com.venunair.warden.ui.autodetect.AutoDetectSuggestionsScreen
-import com.venunair.warden.ui.home.HomeScreen
-import com.venunair.warden.ui.home.HomeViewModel
-import com.venunair.warden.ui.home.OverviewScreen
-import com.venunair.warden.ui.itemdetail.ItemDetailScreen
-import com.venunair.warden.ui.onboarding.OnboardingScreen
-import com.venunair.warden.ui.privacy.PrivacyScreen
-import com.venunair.warden.ui.settings.SettingsScreen
-import com.venunair.warden.ui.common.LocalRegion
+import com.venunair.wisma.capture.CameraCaptureScreen
+import com.venunair.wisma.data.ItemRepository
+import com.venunair.wisma.data.SettingsRepository
+import com.venunair.wisma.data.UserPreferences
+import com.venunair.wisma.ui.additem.AddEditItemScreen
+import com.venunair.wisma.ui.archive.ArchivedItemsScreen
+import com.venunair.wisma.ui.autodetect.AutoDetectSuggestionsScreen
+import com.venunair.wisma.ui.home.HomeScreen
+import com.venunair.wisma.ui.home.HomeViewModel
+import com.venunair.wisma.ui.home.OverviewScreen
+import com.venunair.wisma.ui.itemdetail.ItemDetailScreen
+import com.venunair.wisma.ui.onboarding.OnboardingScreen
+import com.venunair.wisma.ui.privacy.PrivacyScreen
+import com.venunair.wisma.ui.settings.SettingsScreen
+import com.venunair.wisma.ui.common.LocalRegion
 import kotlinx.coroutines.launch
 
 sealed class WardenDestination(val route: String) {

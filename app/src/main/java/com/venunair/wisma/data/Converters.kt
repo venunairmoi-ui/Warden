@@ -1,4 +1,4 @@
-package com.venunair.warden.data
+package com.venunair.wisma.data
 
 import androidx.room.TypeConverter
 import java.time.Instant

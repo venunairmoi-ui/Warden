@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.common
+package com.venunair.wisma.ui.common
 
 import android.content.ContentResolver
 import android.content.Context

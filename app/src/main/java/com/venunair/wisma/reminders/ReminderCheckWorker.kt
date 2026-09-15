@@ -1,12 +1,12 @@
-package com.venunair.warden.reminders
+package com.venunair.wisma.reminders
 
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.venunair.warden.WardenApplication
-import com.venunair.warden.data.Item
-import com.venunair.warden.data.ItemCategory
-import com.venunair.warden.data.computeAmcServiceStatus
+import com.venunair.wisma.WardenApplication
+import com.venunair.wisma.data.Item
+import com.venunair.wisma.data.ItemCategory
+import com.venunair.wisma.data.computeAmcServiceStatus
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -100,7 +100,7 @@ class ReminderCheckWorker(
      * those visits are gone for good. Returns null if neither applies.
      */
     private suspend fun buildSmartSuffix(
-        repository: com.venunair.warden.data.ItemRepository,
+        repository: com.venunair.wisma.data.ItemRepository,
         item: Item
     ): String? {
         val lines = listOfNotNull(
@@ -111,7 +111,7 @@ class ReminderCheckWorker(
     }
 
     private suspend fun buildRepairWarning(
-        repository: com.venunair.warden.data.ItemRepository,
+        repository: com.venunair.wisma.data.ItemRepository,
         item: Item
     ): String? {
         val purchasePrice = item.cost ?: return null
@@ -125,7 +125,7 @@ class ReminderCheckWorker(
     }
 
     private suspend fun buildAmcRemainingWarning(
-        repository: com.venunair.warden.data.ItemRepository,
+        repository: com.venunair.wisma.data.ItemRepository,
         item: Item
     ): String? {
         if (item.category != ItemCategory.AMC) return null

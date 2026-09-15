@@ -1,4 +1,4 @@
-package com.venunair.warden.backup
+package com.venunair.wisma.backup
 
 import android.content.Context
 import android.content.Intent
@@ -15,8 +15,8 @@ import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
-import com.venunair.warden.capture.AttachmentStorage
-import com.venunair.warden.data.WardenDatabase
+import com.venunair.wisma.capture.AttachmentStorage
+import com.venunair.wisma.data.WardenDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -219,7 +219,7 @@ object DriveBackupManager {
 
     /**
      * Applies a staged restore, if one is pending -- MUST be called from
-     * [com.venunair.warden.WardenApplication.onCreate] before its
+     * [com.venunair.wisma.WardenApplication.onCreate] before its
      * `database` lazy val (or anything that touches it) is ever accessed.
      * Swapping the live warden.db file out from under an already-open
      * Room connection is exactly the kind of thing that's easy to get

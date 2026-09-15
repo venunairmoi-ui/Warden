@@ -1,12 +1,12 @@
-package com.venunair.warden.ui.settings
+package com.venunair.wisma.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.venunair.warden.data.DigestFrequency
-import com.venunair.warden.data.Region
-import com.venunair.warden.data.SettingsRepository
-import com.venunair.warden.data.ThemeMode
-import com.venunair.warden.data.UserPreferences
+import com.venunair.wisma.data.DigestFrequency
+import com.venunair.wisma.data.Region
+import com.venunair.wisma.data.SettingsRepository
+import com.venunair.wisma.data.ThemeMode
+import com.venunair.wisma.data.UserPreferences
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn

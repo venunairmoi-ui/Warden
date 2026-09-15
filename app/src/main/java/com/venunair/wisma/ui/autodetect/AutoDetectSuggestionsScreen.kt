@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.autodetect
+package com.venunair.wisma.ui.autodetect
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -46,8 +46,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.venunair.warden.data.PendingAutoDetectSuggestion
-import com.venunair.warden.data.SettingsRepository
+import com.venunair.wisma.data.PendingAutoDetectSuggestion
+import com.venunair.wisma.data.SettingsRepository
 import java.text.DateFormat
 import java.util.Date
 

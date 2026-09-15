@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.home
+package com.venunair.wisma.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -75,14 +75,14 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.venunair.warden.R
-import com.venunair.warden.autodetect.AutoDetectWorker
-import com.venunair.warden.data.ItemRepository
-import com.venunair.warden.data.seedSampleData
-import com.venunair.warden.reminders.ReminderCheckWorker
-import com.venunair.warden.ui.common.toCurrencyString
-import com.venunair.warden.ui.theme.ItemUrgency
-import com.venunair.warden.ui.theme.color
+import com.venunair.wisma.R
+import com.venunair.wisma.autodetect.AutoDetectWorker
+import com.venunair.wisma.data.ItemRepository
+import com.venunair.wisma.data.seedSampleData
+import com.venunair.wisma.reminders.ReminderCheckWorker
+import com.venunair.wisma.ui.common.toCurrencyString
+import com.venunair.wisma.ui.theme.ItemUrgency
+import com.venunair.wisma.ui.theme.color
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull

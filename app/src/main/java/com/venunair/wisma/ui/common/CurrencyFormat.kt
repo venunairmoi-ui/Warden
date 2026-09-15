@@ -1,8 +1,8 @@
-package com.venunair.warden.ui.common
+package com.venunair.wisma.ui.common
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
-import com.venunair.warden.data.Region
+import com.venunair.wisma.data.Region
 import java.text.NumberFormat
 import java.util.Locale
 

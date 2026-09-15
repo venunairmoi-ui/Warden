@@ -1,4 +1,4 @@
-package com.venunair.warden.ocr
+package com.venunair.wisma.ocr
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -36,7 +36,7 @@ import java.util.Locale
  * of the whitelist, same technique serial/model already used successfully,
  * plus three more Product-details fields the whitelist-only approach never
  * touched at all: retailer, invoiceNumber, and referenceNumber (feeds
- * Item.amcNumber -- see [com.venunair.warden.data.referenceNumberLabel]
+ * Item.amcNumber -- see [com.venunair.wisma.data.referenceNumberLabel]
  * for its category-aware on-screen label). Deliberately still label-
  * required for all three, same precision-over-recall bar as serial/model.
  */

@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.settings
+package com.venunair.wisma.ui.settings
 
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -63,16 +63,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.venunair.warden.BuildConfig
-import com.venunair.warden.R
-import com.venunair.warden.autodetect.hasMediaImageAccess
-import com.venunair.warden.autodetect.mediaImagesPermission
-import com.venunair.warden.backup.DriveBackupManager
-import com.venunair.warden.data.AVAILABLE_REMINDER_OFFSETS
-import com.venunair.warden.data.DigestFrequency
-import com.venunair.warden.data.Region
-import com.venunair.warden.data.SettingsRepository
-import com.venunair.warden.data.ThemeMode
+import com.venunair.wisma.BuildConfig
+import com.venunair.wisma.R
+import com.venunair.wisma.autodetect.hasMediaImageAccess
+import com.venunair.wisma.autodetect.mediaImagesPermission
+import com.venunair.wisma.backup.DriveBackupManager
+import com.venunair.wisma.data.AVAILABLE_REMINDER_OFFSETS
+import com.venunair.wisma.data.DigestFrequency
+import com.venunair.wisma.data.Region
+import com.venunair.wisma.data.SettingsRepository
+import com.venunair.wisma.data.ThemeMode
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date

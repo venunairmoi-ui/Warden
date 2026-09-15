@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.privacy
+package com.venunair.wisma.ui.privacy
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -37,8 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.venunair.warden.capture.AttachmentStorage
-import com.venunair.warden.data.ItemRepository
+import com.venunair.wisma.capture.AttachmentStorage
+import com.venunair.wisma.data.ItemRepository
 import kotlinx.coroutines.launch
 
 /**

@@ -1,9 +1,9 @@
-package com.venunair.warden.capture
+package com.venunair.wisma.capture
 
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
-import com.venunair.warden.data.AttachmentMimeType
+import com.venunair.wisma.data.AttachmentMimeType
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID

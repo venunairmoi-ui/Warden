@@ -1,4 +1,4 @@
-package com.venunair.warden.capture
+package com.venunair.wisma.capture
 
 import android.content.Intent
 import android.net.Uri
@@ -8,8 +8,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import com.venunair.warden.MainActivity
-import com.venunair.warden.data.AttachmentMimeType
+import com.venunair.wisma.MainActivity
+import com.venunair.wisma.data.AttachmentMimeType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.onboarding
+package com.venunair.wisma.ui.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,7 +34,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.venunair.warden.R
+import com.venunair.wisma.R
 import kotlinx.coroutines.launch
 
 private data class OnboardingPage(

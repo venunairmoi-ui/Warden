@@ -1,4 +1,4 @@
-package com.venunair.warden.reminders
+package com.venunair.wisma.reminders
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -10,10 +10,10 @@ import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.venunair.warden.MainActivity
-import com.venunair.warden.R
-import com.venunair.warden.data.Item
-import com.venunair.warden.data.ReminderRule
+import com.venunair.wisma.MainActivity
+import com.venunair.wisma.R
+import com.venunair.wisma.data.Item
+import com.venunair.wisma.data.ReminderRule
 
 object NotificationHelper {
     // v2, not "warranty_reminders": NotificationChannel importance can only
@@ -25,8 +25,8 @@ object NotificationHelper {
     const val CHANNEL_ID = "warranty_reminders_v2"
     const val DIGEST_CHANNEL_ID = "weekly_digest"
     const val AUTO_DETECT_CHANNEL_ID = "auto_detect_receipts"
-    const val ACTION_MARK_SERVICED = "com.venunair.warden.action.MARK_SERVICED"
-    const val ACTION_SNOOZE = "com.venunair.warden.action.SNOOZE"
+    const val ACTION_MARK_SERVICED = "com.venunair.wisma.action.MARK_SERVICED"
+    const val ACTION_SNOOZE = "com.venunair.wisma.action.SNOOZE"
     const val EXTRA_ITEM_ID = "extra_item_id"
     const val EXTRA_RULE_ID = "extra_rule_id"
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"

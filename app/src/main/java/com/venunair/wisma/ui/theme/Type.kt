@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.theme
+package com.venunair.wisma.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
@@ -6,7 +6,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.venunair.warden.R
+import com.venunair.wisma.R
 
 /**
  * "Vault Ledger" three-font system (branding pass, 2026-09-15) — replaces

@@ -1,4 +1,4 @@
-package com.venunair.warden.data
+package com.venunair.wisma.data
 
 /** How often the weekly-digest-style summary notification fires. */
 enum class DigestFrequency {

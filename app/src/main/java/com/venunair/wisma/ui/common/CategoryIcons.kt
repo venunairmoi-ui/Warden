@@ -1,4 +1,4 @@
-package com.venunair.warden.ui.common
+package com.venunair.wisma.ui.common
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Autorenew
@@ -8,7 +8,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.venunair.warden.data.ItemCategory
+import com.venunair.wisma.data.ItemCategory
 
 /** Shared between Home and Detail so a category always reads the same way. */
 fun categoryIcon(category: ItemCategory): ImageVector = when (category) {

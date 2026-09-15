@@ -1,4 +1,4 @@
-package com.venunair.warden.autodetect
+package com.venunair.wisma.autodetect
 
 import android.Manifest
 import android.content.Context

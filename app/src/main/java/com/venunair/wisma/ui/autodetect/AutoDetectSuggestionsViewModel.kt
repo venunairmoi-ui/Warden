@@ -1,9 +1,9 @@
-package com.venunair.warden.ui.autodetect
+package com.venunair.wisma.ui.autodetect
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.venunair.warden.data.PendingAutoDetectSuggestion
-import com.venunair.warden.data.SettingsRepository
+import com.venunair.wisma.data.PendingAutoDetectSuggestion
+import com.venunair.wisma.data.SettingsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map

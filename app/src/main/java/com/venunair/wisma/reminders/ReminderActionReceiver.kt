@@ -1,4 +1,4 @@
-package com.venunair.warden.reminders
+package com.venunair.wisma.reminders
 
 import android.content.BroadcastReceiver
 import android.content.Context
