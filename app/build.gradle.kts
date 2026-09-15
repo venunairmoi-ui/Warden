@@ -25,14 +25,25 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    // Placeholder — rename before Play Store submission (applicationId must be
-    // unique and permanent once published). Android Studio's Refactor > Rename
-    // Package handles this safely across the whole project.
-    namespace = "com.venunair.warden"
+    // Renamed 2026-09-15 (0.15.12): com.venunair.warden -> com.venunair.wisma
+    // -- the placeholder package/namespace, finalized once "Wisma" (not
+    // "Warden") was confirmed as the actual app name, so the id now
+    // matches the brand instead of a name that was only ever a working
+    // title. Permanent once published, per the note this comment used to
+    // carry -- there is no test/beta install of this applicationId out in
+    // the world yet, so this was the right and only time to do it.
+    // No IDE available in this environment for Refactor > Rename Package,
+    // so this was done as a manual, whole-tree find/replace of
+    // "com.venunair.warden" -> "com.venunair.wisma" (package declarations,
+    // imports, the two NotificationHelper action-string constants) plus
+    // moving app/src/main/java/com/venunair/warden/ -> .../wisma/ and
+    // app/schemas/com.venunair.warden.data.WardenDatabase/ -> the matching
+    // wisma path -- verified with a full compileDebugKotlin afterward.
+    namespace = "com.venunair.wisma"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.venunair.warden"
+        applicationId = "com.venunair.wisma"
         minSdk = 26 // Android 8.0 — needed for NotificationChannel (Sprint 5) without a compat shim
         targetSdk = 36
         // Bumped with each meaningful fix/feature from here on -- previously
@@ -488,8 +499,8 @@ android {
         // brand text, not worth a mechanical rename): WardenApplication,
         // WardenDatabase, WardenTheme, Theme.Warden style names,
         // com.venunair.warden package/applicationId itself.
-        versionCode = 51
-        versionName = "0.15.11-keep-wisma-name"
+        versionCode = 52
+        versionName = "0.15.12-applicationid-rename"
 
         vectorDrawables { useSupportLibrary = true }
     }
