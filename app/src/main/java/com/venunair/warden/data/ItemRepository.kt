@@ -274,6 +274,22 @@ class ItemRepository(
     /** Sprint 8: total repair/service cost for an item (used by smart notifications). */
     suspend fun getServiceCostForItem(itemId: Long): Double =
         serviceEventDao.getTotalCostForItem(itemId)
+
+    /**
+     * Phase 2 (privacy): "Delete all my data" on the Privacy screen. DB
+     * rows only -- callers fetch getAllAttachmentsForDeletion() first, call
+     * this, then clean up each attachment's backing file via
+     * capture.AttachmentStorage.deleteBackingFile(context, ...), same
+     * context-free division of responsibility as deleteItem()/
+     * deleteAttachment() above. Deliberately scoped to user content
+     * (items, attachments, reminder rules, service events -- everything
+     * cascades off `items` via their ON DELETE CASCADE FKs) and NOT to
+     * SettingsRepository's DataStore prefs (theme/region/reminder
+     * defaults): those are app configuration, not personal data.
+     */
+    suspend fun getAllAttachmentsForDeletion(): List<Attachment> = attachmentDao.getAll()
+
+    suspend fun deleteAllItems() = itemDao.deleteAll()
 }
 
 // ── Sprint 8: Search result types ──────────────────────────────────

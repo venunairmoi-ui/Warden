@@ -387,6 +387,46 @@ android {
         versionCode = 48
         versionName = "0.15.8-ui-commercial-phase1"
 
+        // 0.15.9-vault-ledger: 2026-09-15 -- Phase 2 of the UI/commercial-
+        // readiness plan. Four independent pieces of work:
+        // - isMinifyEnabled and lint's checkReleaseBuilds re-enabled
+        //   (see their own updated comments below/above); verified with
+        //   two full signed assembleRelease builds, including one after
+        //   every other change in this entry.
+        // - New Privacy screen (Settings -> Privacy): where data lives,
+        //   plain-language reasons for each permission, and a working
+        //   "Delete all my data" control (ItemRepository.deleteAllItems()
+        //   + getAllAttachmentsForDeletion(), cascading via the existing
+        //   ON DELETE CASCADE FKs).
+        // - Accessibility baseline pass: fixed 3 touch targets that had
+        //   drifted under Android's 48dp minimum (one introduced this
+        //   session in the card overflow menu, two pre-existing), added
+        //   1 missing TalkBack label (AttachmentThumbnail's tap target),
+        //   checked for color-only status indicators (found none -- the
+        //   app already consistently pairs color with a text label).
+        //   Deliberately code-level only, not a substitute for an actual
+        //   on-device TalkBack pass.
+        // - "Vault Ledger" branding direction (approved this session,
+        //   after a published mockup comparing it against the old Wisma
+        //   fintech look): ui/theme/Color.kt's whole palette replaced
+        //   (electric-blue -> vault green primary, brass secondary, steel
+        //   tertiary, warm graphite/stone neutrals instead of near-black/
+        //   cream); ui/theme/Type.kt's Sora/Geist/Geist Mono trio replaced
+        //   with Fraunces/Archivo/IBM Plex Mono (old font files deleted);
+        //   OverviewScreen's top-bar wordmark "WISMA" -> "Warden", plus
+        //   every other user-facing "Wisma" string (app_name included --
+        //   this is what's shown under the launcher icon and in Android
+        //   Settings > Apps) and the two remaining hardcoded old-blue hex
+        //   values (NotificationHelper's accent color, colors.xml's splash
+        //   background) brought in line with the new primaryContainer.
+        //   NOT done as part of this: the mockup's card-status "stamp"
+        //   treatment (cosmetic card-anatomy change, kept for a later
+        //   pass) and the launcher icon glyph itself (still the existing
+        //   shield/wrench/document/person mark -- reads fine under the
+        //   new direction, wasn't part of what changed here).
+        versionCode = 49
+        versionName = "0.15.9-vault-ledger"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -403,7 +443,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Re-enabled 2026-09-15 (Phase 2 of the UI/commercial-readiness
+            // plan): dependency set is all mainstream AndroidX/Google
+            // libraries (Room, WorkManager, CameraX, ML Kit, Coil) that
+            // ship their own consumer ProGuard rules, and there's no
+            // custom reflection-heavy networking stack (this app has none
+            // -- everything is local-only), which keeps R8 risk low.
+            // Verified with a full signed assembleRelease before this
+            // landed; still worth an on-device smoke test (scan/OCR,
+            // reminders, camera, notifications) before any real store
+            // submission, since a clean build doesn't catch every
+            // possible runtime stripping issue.
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Only signed when keystore.properties exists locally -- see
             // its comment above. Without a signingConfig here, assembleRelease
@@ -432,20 +483,14 @@ android {
         }
     }
 
-    // Added 2026-09-01, beta distribution: AGP runs a "vital" lint pass
-    // (lintVitalAnalyzeRelease) automatically before every release build,
-    // which exists to block Play Store submissions with fatal lint issues.
-    // We're not submitting to the Play Store from this machine, and on
-    // Windows this task has been failing outright with a file-lock error
-    // on its own lint-cache jar (another process -- Windows Defender, a
-    // leftover Gradle daemon, or Android Studio's indexer -- holding the
-    // file open), unrelated to anything in this codebase. Disabling it for
-    // release builds removes that whole class of flaky Windows build
-    // failures; re-enable (or just run `gradlew lint` manually any time)
-    // once this is actually headed to the Play Store, where it's worth
-    // having back.
+    // Re-enabled 2026-09-15 (Phase 2): the 2026-09-01 Windows file-lock
+    // failure on lintVitalAnalyzeRelease's cache jar didn't reproduce when
+    // re-tested against a real assembleRelease -- see that build's own log
+    // if it starts flaking again on this machine. Since this app is now
+    // actually headed toward Play Store submission, worth having this
+    // back rather than silently skipping fatal lint issues.
     lint {
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 }
 

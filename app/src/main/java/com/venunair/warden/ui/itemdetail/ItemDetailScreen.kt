@@ -918,10 +918,16 @@ private fun TimelineEntry(
                 )
             }
             receiptAttachments.firstOrNull()?.let { receipt ->
+                // Accessibility fix, 2026-09-15 (Phase 2): this explicit
+                // 28dp override shrank the tap target well below even
+                // Material3 TextButton's own ~40dp default (every other
+                // TextButton in the app is left at that default) -- removed
+                // so it's at least back in line with the rest of the app's
+                // buttons; contentPadding alone still keeps it visually
+                // compact in this dense service-history list.
                 TextButton(
                     onClick = { onOpenReceipt(receipt) },
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-                    modifier = Modifier.height(28.dp)
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
                 ) {
                     Icon(Icons.Filled.Receipt, contentDescription = null, modifier = Modifier.size(14.dp))
                     Text("Receipt", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))

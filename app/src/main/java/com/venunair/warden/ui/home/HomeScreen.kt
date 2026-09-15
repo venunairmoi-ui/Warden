@@ -970,13 +970,20 @@ private fun ProductCard(
                     if (onEdit != null || onArchive != null) {
                         var menuExpanded by remember { mutableStateOf(false) }
                         Box {
-                            IconButton(
-                                onClick = { menuExpanded = true },
-                                modifier = Modifier.size(32.dp)
-                            ) {
+                            // Accessibility fix, 2026-09-15 (Phase 2): this
+                            // used to override IconButton's default size
+                            // down to 32dp to look tidier in the compact
+                            // card row -- but that shrinks the actual
+                            // touchable area below Android's 48dp minimum
+                            // recommended target, not just the visuals.
+                            // IconButton already reserves 48dp of touch
+                            // target by default; shrink only the icon
+                            // glyph inside it instead.
+                            IconButton(onClick = { menuExpanded = true }) {
                                 Icon(
                                     Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(R.string.content_desc_more_actions, item.name)
+                                    contentDescription = stringResource(R.string.content_desc_more_actions, item.name),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             DropdownMenu(

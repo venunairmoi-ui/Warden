@@ -51,6 +51,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -85,11 +87,25 @@ fun AttachmentThumbnail(
     }
     val bitmap = thumbUri?.let { rememberLocalThumbnail(it) }
 
+    // Accessibility fix, 2026-09-15 (Phase 2): this clickable region had no
+    // accessible label at all -- both branches below pass
+    // contentDescription = null on their own Image/Icon (correctly, since
+    // they're purely decorative fill), so without this the whole tap
+    // target was silently unlabeled for TalkBack. clickable() merges
+    // descendant semantics into one node by default, but there was nothing
+    // to merge from; this puts the label directly on the clickable node
+    // itself instead.
+    val thumbnailDescription = if (attachment.mimeType == AttachmentMimeType.PDF) {
+        "View PDF attachment"
+    } else {
+        "View photo attachment"
+    }
     Box(
         modifier = modifier
             .size(88.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
+            .semantics { contentDescription = thumbnailDescription }
     ) {
         if (bitmap != null) {
             Image(
@@ -129,21 +145,45 @@ fun AttachmentThumbnail(
         }
 
         onDelete?.let { delete ->
-            Surface(
-                onClick = delete,
-                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f),
-                shape = CircleShape,
+            // Accessibility fix, 2026-09-15 (Phase 2): the old Surface(onClick
+            // = ...) was itself sized to 22dp, well under the 48dp minimum
+            // touch target. A plain IconButton (Compose's usual fix, and
+            // what ItemDetailScreen's own "Remove receipt" button already
+            // uses) reserves a full 48dp -- but tried here first and reverted:
+            // on this 88dp thumbnail, a 48dp IconButton anchored TopEnd
+            // covers more than half the thumbnail's area, and since it sits
+            // ON TOP of the thumbnail's own clickable(onClick) region, that
+            // touch area would silently swallow taps a user expects to open
+            // the attachment, not delete it -- trading a hard-to-hit target
+            // for an accidental-deletion hazard, worse than the original
+            // problem. 36dp is a deliberate middle ground: a real, verified
+            // improvement over 22dp, while keeping the delete control's
+            // footprint from eating into the "view" tap target underneath
+            // it. Plain clickable Box, not IconButton, so this size is
+            // exact rather than fighting IconButton's own internal 48dp
+            // minimum-size enforcement.
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(22.dp)
+                    .padding(2.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = delete),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = "Remove attachment",
-                    tint = Color.White,
-                    modifier = Modifier.padding(3.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Remove attachment",
+                        tint = Color.White,
+                        modifier = Modifier.padding(3.dp)
+                    )
+                }
             }
         }
     }

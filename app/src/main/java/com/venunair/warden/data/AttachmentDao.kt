@@ -44,4 +44,11 @@ interface AttachmentDao {
            ORDER BY addedAt ASC LIMIT 1"""
     )
     suspend fun getFirstThumbnailForItem(itemId: Long): String?
+
+    // Settings "Delete all my data" control -- read every attachment BEFORE
+    // ItemDao.deleteAll() cascades the rows away, so the caller still has
+    // each localFileUri/thumbnailUri to clean up on disk afterward (same
+    // division of responsibility as getAttachments()/deleteItem()).
+    @Query("SELECT * FROM attachments")
+    suspend fun getAll(): List<Attachment>
 }

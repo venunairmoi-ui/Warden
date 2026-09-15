@@ -1,8 +1,8 @@
 <resources>
-    <string name="app_name">Wisma</string>
+    <string name="app_name">Warden</string>
 
     <!-- Home screen -->
-    <string name="home_title">Wisma</string>
+    <string name="home_title">Warden</string>
     <string name="add_button">Add</string>
     <string name="empty_state_title">Nothing tracked yet</string>
     <string name="empty_state_body">Add your first warranty, subscription,\nor service contract to keep it safe.</string>
@@ -180,9 +180,9 @@
     <string name="settings_digest_frequency">Digest frequency</string>
     <string name="settings_auto_detect_section">Auto-detect</string>
     <string name="settings_auto_detect_title">Suggest new receipts</string>
-    <string name="settings_auto_detect_body">Wisma will look at newly added photos and suggest ones that look like a receipt or warranty card. Nothing is added automatically — you always confirm first.</string>
+    <string name="settings_auto_detect_body">Warden will look at newly added photos and suggest ones that look like a receipt or warranty card. Nothing is added automatically — you always confirm first.</string>
     <string name="settings_auto_detect_permission_title">Allow photo access?</string>
-    <string name="settings_auto_detect_permission_body">Auto-detect needs permission to look at your photos so it can suggest ones that look like receipts or warranty cards. Wisma never uploads your photos anywhere, and nothing is added to your items without your confirmation.</string>
+    <string name="settings_auto_detect_permission_body">Auto-detect needs permission to look at your photos so it can suggest ones that look like receipts or warranty cards. Warden never uploads your photos anywhere, and nothing is added to your items without your confirmation.</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_region">Region</string>
     <string name="settings_region_body">Changes how currency and dates are displayed. Doesn\'t translate the app or affect scan/attach auto-fill, which is still tuned for Indian receipts.</string>
@@ -195,11 +195,11 @@
     <string name="settings_backup_coming_soon">Google Drive backup is coming in a future update.</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
-    <string name="settings_tagline">Wisma keeps everything on your phone — no account, no cloud dependency, no subscription.</string>
+    <string name="settings_tagline">Warden keeps everything on your phone — no account, no cloud dependency, no subscription.</string>
 
     <!-- Sprint 9: Auto-detect notification -->
     <string name="auto_detect_notification_title">Looks like a receipt</string>
-    <string name="auto_detect_notification_body">Add it to Wisma?</string>
+    <string name="auto_detect_notification_body">Add it to Warden?</string>
 
     <!-- Sprint 9: Onboarding -->
     <string name="onboarding_skip">Skip</string>
@@ -208,7 +208,7 @@
     <string name="onboarding_page1_headline">One place for everything you own.</string>
     <string name="onboarding_page1_body">Warranties, AMCs, subscriptions, and documents — tracked in one app instead of a drawer full of paper.</string>
     <string name="onboarding_page2_headline">Snap it, we\'ll read it.</string>
-    <string name="onboarding_page2_body">Photograph a receipt or warranty card and Wisma pulls out the dates and numbers for you.</string>
+    <string name="onboarding_page2_body">Photograph a receipt or warranty card and Warden pulls out the dates and numbers for you.</string>
     <string name="onboarding_page3_headline">Never miss an expiry.</string>
     <string name="onboarding_page3_body">Reminders fire before anything lapses — configurable per item, entirely on your phone.</string>
 

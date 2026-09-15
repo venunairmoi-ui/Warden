@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -73,7 +74,8 @@ private class SettingsViewModelFactory(private val repository: SettingsRepositor
 fun SettingsScreen(
     repository: SettingsRepository,
     onBack: () -> Unit,
-    onOpenArchivedItems: () -> Unit
+    onOpenArchivedItems: () -> Unit,
+    onOpenPrivacy: () -> Unit
 ) {
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory(repository))
     val preferences by viewModel.preferences.collectAsState()
@@ -284,6 +286,34 @@ fun SettingsScreen(
                                 )
                                 Text(
                                     stringResource(R.string.settings_archived_items_body),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    // Phase 2 (privacy): where data lives, permission
+                    // explanations, and "Delete all my data" -- see
+                    // PrivacyScreen's own doc comment.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onOpenPrivacy),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.PrivacyTip,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Privacy", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "What's stored, what permissions are for, and how to delete it all",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

@@ -1,12 +1,12 @@
 <resources>
-    <!-- UI redesign pass, 2026-08-25: splash screen background — same
-         brand electric-blue used by the adaptive launcher icon's background
-         (drawable/ic_launcher_background.xml, #0052FF = DESIGN.md
-         primary-container / ui/theme/Color.kt's WardenPrimaryContainerDark),
-         so the splash hold visually continues straight into the app-drawer
-         icon rather than jumping color. Was #2E5E4E (old teal) pre-redesign.
-         Kept in sync manually; this is the one color the platform's
+    <!-- Splash screen background — matches ui/theme/Color.kt's
+         WardenPrimaryContainerDark, so the splash hold visually continues
+         straight into the app-drawer icon rather than jumping color. Kept
+         in sync manually; this is the one color the platform's
          SplashScreen API needs before Compose (and WardenTheme) ever runs,
-         so it can't just reference the Compose value directly. -->
-    <color name="warden_primary">#0052FF</color>
+         so it can't just reference the Compose value directly.
+         Vault Ledger branding pass, 2026-09-15: #0052FF (Wisma electric-
+         blue) -> #2F5D50 (vault green). Was #2E5E4E (an even older teal,
+         pre-Wisma) before that. -->
+    <color name="warden_primary">#2F5D50</color>
 </resources>

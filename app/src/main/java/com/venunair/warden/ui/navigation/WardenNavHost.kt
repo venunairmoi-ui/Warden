@@ -28,6 +28,7 @@ import com.venunair.warden.ui.home.HomeViewModel
 import com.venunair.warden.ui.home.OverviewScreen
 import com.venunair.warden.ui.itemdetail.ItemDetailScreen
 import com.venunair.warden.ui.onboarding.OnboardingScreen
+import com.venunair.warden.ui.privacy.PrivacyScreen
 import com.venunair.warden.ui.settings.SettingsScreen
 import com.venunair.warden.ui.common.LocalRegion
 import kotlinx.coroutines.launch
@@ -61,6 +62,9 @@ sealed class WardenDestination(val route: String) {
     // Feedback, 2026-08-26: reachable from Settings -- see
     // ArchivedItemsScreen's own doc comment for why this exists.
     data object ArchivedItems : WardenDestination("archived_items")
+    // Phase 2 (privacy): reachable from Settings -- see PrivacyScreen's own
+    // doc comment.
+    data object Privacy : WardenDestination("privacy")
 
     fun editRoute(itemId: Long) = "item/$itemId/edit"
     fun detailRoute(itemId: Long) = "item/$itemId"
@@ -280,11 +284,18 @@ fun WardenNavHost(
             SettingsScreen(
                 repository = settingsRepository,
                 onBack = { navController.popBackStack() },
-                onOpenArchivedItems = { navController.navigate(WardenDestination.ArchivedItems.route) }
+                onOpenArchivedItems = { navController.navigate(WardenDestination.ArchivedItems.route) },
+                onOpenPrivacy = { navController.navigate(WardenDestination.Privacy.route) }
             )
         }
         composable(WardenDestination.ArchivedItems.route) {
             ArchivedItemsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(WardenDestination.Privacy.route) {
+            PrivacyScreen(
                 repository = repository,
                 onBack = { navController.popBackStack() }
             )

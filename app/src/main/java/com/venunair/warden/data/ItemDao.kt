@@ -71,4 +71,11 @@ interface ItemDao {
 
     @Query("SELECT * FROM items WHERE id IN (:ids) AND status != 'ARCHIVED'")
     suspend fun getByIds(ids: List<Long>): List<Item>
+
+    // Settings "Delete all my data" control. Cascades (ON DELETE CASCADE)
+    // to every attachment, reminder rule, and service event row -- see
+    // ItemRepository.deleteAllItems()'s doc comment for the full flow,
+    // including backing-file cleanup, which this query alone can't do.
+    @Query("DELETE FROM items")
+    suspend fun deleteAll()
 }

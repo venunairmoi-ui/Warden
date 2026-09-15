@@ -221,9 +221,17 @@ fun OverviewScreen(
             var debugMenuExpanded by remember { mutableStateOf(false) }
             TopAppBar(
                 title = {
-                    // Same WISMA icon+wordmark lockup My Products' top bar
-                    // used to carry -- this is now the screen that opens
-                    // it, so the brand lockup belongs here.
+                    // Same icon+wordmark lockup My Products' top bar used
+                    // to carry -- this is now the screen that opens it, so
+                    // the brand lockup belongs here. Wordmark text changed
+                    // 2026-09-15 (Vault Ledger branding pass): "WISMA" ->
+                    // "Warden", matching the actual package/repo identity.
+                    // The mark drawable itself (ic_wisma_mark -- resource
+                    // name unchanged, only its pixels were ever brand-
+                    // specific) still reads fine under the new direction;
+                    // letterSpacing loosened from -0.5sp, tuned for Sora's
+                    // tight geometric tracking, which crowded Fraunces'
+                    // serif letterforms at this size.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
                             painter = painterResource(R.drawable.ic_wisma_mark),
@@ -233,9 +241,9 @@ fun OverviewScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "WISMA",
-                            style = MaterialTheme.typography.titleLarge.copy(letterSpacing = (-0.5).sp),
-                            fontWeight = FontWeight.Bold,
+                            "Warden",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

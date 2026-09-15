@@ -144,10 +144,12 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             // Accent color for the small-icon circle / header tint on
             // launchers that colorize by it (stock Android 8+, and several
-            // OEM skins) — the Wisma redesign's electric-blue brand accent
-            // (WardenPrimaryContainerDark in ui/theme/Color.kt, 2026-08-25),
-            // so the notification doesn't fall back to a low-contrast default.
-            .setColor(0xFF0052FF.toInt())
+            // OEM skins) — the Vault Ledger branding pass's vault-green
+            // brand accent (WardenPrimaryContainerDark in
+            // ui/theme/Color.kt, 2026-09-15; was the Wisma redesign's
+            // electric blue), so the notification doesn't fall back to a
+            // low-contrast default.
+            .setColor(0xFF2F5D50.toInt())
             // Matches the channel's IMPORTANCE_HIGH. On API 26+ (this app's
             // minSdk) the channel is what actually governs heads-up/sound
             // behavior — this is only a fallback for pre-channel Android,
@@ -204,7 +206,7 @@ object NotificationHelper {
             .setContentTitle(item.name)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setColor(0xFF0052FF.toInt())
+            .setColor(0xFF2F5D50.toInt())
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
@@ -250,7 +252,7 @@ object NotificationHelper {
             .setContentTitle(title)
             .setContentText(lines.first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setColor(0xFF0052FF.toInt())
+            .setColor(0xFF2F5D50.toInt())
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
@@ -306,7 +308,7 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Looks like a receipt")
             .setContentText("Add it to Warden?")
-            .setColor(0xFF0052FF.toInt())
+            .setColor(0xFF2F5D50.toInt())
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)

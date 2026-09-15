@@ -2,17 +2,17 @@
 <font-family xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <font
-        android:font="@font/geist_mono_400"
+        android:font="@font/ibm_plex_mono_400"
         android:fontWeight="400"
         android:fontStyle="normal"
-        app:font="@font/geist_mono_400"
+        app:font="@font/ibm_plex_mono_400"
         app:fontWeight="400"
         app:fontStyle="normal" />
     <font
-        android:font="@font/geist_mono_500"
+        android:font="@font/ibm_plex_mono_500"
         android:fontWeight="500"
         android:fontStyle="normal"
-        app:font="@font/geist_mono_500"
+        app:font="@font/ibm_plex_mono_500"
         app:fontWeight="500"
         app:fontStyle="normal" />
 </font-family>
