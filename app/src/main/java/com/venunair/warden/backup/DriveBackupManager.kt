@@ -112,7 +112,7 @@ object DriveBackupManager {
             request.headers.authorization = "Bearer $accessToken"
         }
         return Drive.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), requestInitializer)
-            .setApplicationName("Warden")
+            .setApplicationName("Wisma")
             .build()
     }
 

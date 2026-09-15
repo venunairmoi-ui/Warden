@@ -469,6 +469,28 @@ android {
         versionCode = 50
         versionName = "0.15.10-drive-backup"
 
+        // 0.15.11-keep-wisma-name: 2026-09-15 -- reverted the "Warden"
+        // wordmark from the Vault Ledger branding pass back to "Wisma",
+        // same day. Reason: checked for trade-name conflicts before
+        // committing to the new name and found several existing Android
+        // apps already called "Warden" (WardenGPS, Warden: Security &
+        // Privacy, WardenCam, plus an unrelated open-source Warden app-
+        // management utility) -- real crowding/trademark risk for an
+        // unverified name, not worth taking on when "Wisma" was already
+        // the known quantity. Only the name reverted -- the vault-green/
+        // brass/steel palette and Fraunces/Archivo/IBM Plex Mono
+        // typography from that same pass stayed as-is, since those were
+        // never the risk. Reverted: app_name and every other user-facing
+        // string that said "Warden" (strings.xml, OverviewScreen's top-bar
+        // wordmark, PrivacyScreen's body copy, NotificationHelper's
+        // auto-detect notification text, DriveBackupManager's Drive API
+        // application-name header). NOT reverted (code identifiers, not
+        // brand text, not worth a mechanical rename): WardenApplication,
+        // WardenDatabase, WardenTheme, Theme.Warden style names,
+        // com.venunair.warden package/applicationId itself.
+        versionCode = 51
+        versionName = "0.15.11-keep-wisma-name"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

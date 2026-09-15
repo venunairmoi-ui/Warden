@@ -307,7 +307,7 @@ object NotificationHelper {
         val notification = NotificationCompat.Builder(context, AUTO_DETECT_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Looks like a receipt")
-            .setContentText("Add it to Warden?")
+            .setContentText("Add it to Wisma?")
             .setColor(0xFF2F5D50.toInt())
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)

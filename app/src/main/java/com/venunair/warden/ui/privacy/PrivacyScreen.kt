@@ -91,16 +91,16 @@ fun PrivacyScreen(
             item {
                 PrivacySection(title = "Where your data lives") {
                     Text(
-                        "Everything you add — item details, photos, and documents — is stored only on this device, in Warden's private app storage, unless you turn on Google Drive backup yourself. There's no account required to use Warden, and no analytics or ad tracking runs in this app.",
+                        "Everything you add — item details, photos, and documents — is stored only on this device, in Wisma's private app storage, unless you turn on Google Drive backup yourself. There's no account required to use Wisma, and no analytics or ad tracking runs in this app.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        "If you back up to Google Drive: your data goes into a hidden folder in your own Google account, invisible in your normal Drive, and only Warden can read it — Warden's developer never sees it. You choose when a backup happens; nothing uploads on its own.",
+                        "If you back up to Google Drive: your data goes into a hidden folder in your own Google account, invisible in your normal Drive, and only Wisma can read it — Wisma's developer never sees it. You choose when a backup happens; nothing uploads on its own.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "If you use Share or Export from another app to bring in a receipt, that file is copied into Warden's own storage — the original stays wherever you shared it from, unaffected.",
+                        "If you use Share or Export from another app to bring in a receipt, that file is copied into Wisma's own storage — the original stays wherever you shared it from, unaffected.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -111,7 +111,7 @@ fun PrivacyScreen(
                 PrivacySection(title = "Permissions, explained") {
                     PermissionExplanation(
                         name = "Camera",
-                        body = "Used only when you choose to photograph a receipt or warranty card. Warden never opens the camera on its own."
+                        body = "Used only when you choose to photograph a receipt or warranty card. Wisma never opens the camera on its own."
                     )
                     PermissionExplanation(
                         name = "Notifications",
@@ -123,7 +123,7 @@ fun PrivacyScreen(
                     )
                     PermissionExplanation(
                         name = "Internet",
-                        body = "Only used when you choose to back up or restore from Google Drive in Settings. Warden makes no other network connections."
+                        body = "Only used when you choose to back up or restore from Google Drive in Settings. Wisma makes no other network connections."
                     )
                 }
             }
@@ -131,7 +131,7 @@ fun PrivacyScreen(
             item {
                 PrivacySection(title = "Your data") {
                     Text(
-                        "You can permanently delete everything Warden has stored — every item, photo, and document — right now, on this device.",
+                        "You can permanently delete everything Wisma has stored — every item, photo, and document — right now, on this device.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Button(
@@ -150,7 +150,7 @@ fun PrivacyScreen(
             title = { Text("Delete all data?") },
             text = {
                 Text(
-                    "Every item, photo, and document tracked in Warden will be permanently removed from this device. This can't be undone."
+                    "Every item, photo, and document tracked in Wisma will be permanently removed from this device. This can't be undone."
                 )
             },
             confirmButton = {

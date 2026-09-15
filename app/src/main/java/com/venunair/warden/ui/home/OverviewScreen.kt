@@ -223,15 +223,23 @@ fun OverviewScreen(
                 title = {
                     // Same icon+wordmark lockup My Products' top bar used
                     // to carry -- this is now the screen that opens it, so
-                    // the brand lockup belongs here. Wordmark text changed
-                    // 2026-09-15 (Vault Ledger branding pass): "WISMA" ->
-                    // "Warden", matching the actual package/repo identity.
-                    // The mark drawable itself (ic_wisma_mark -- resource
-                    // name unchanged, only its pixels were ever brand-
-                    // specific) still reads fine under the new direction;
-                    // letterSpacing loosened from -0.5sp, tuned for Sora's
-                    // tight geometric tracking, which crowded Fraunces'
-                    // serif letterforms at this size.
+                    // the brand lockup belongs here. Wordmark briefly
+                    // changed to "Warden" during the 2026-09-15 Vault
+                    // Ledger branding pass, then reverted the same day --
+                    // "Warden" turned out to already be in use by several
+                    // existing Android apps (WardenGPS, Warden: Security &
+                    // Privacy, WardenCam), a real trademark/crowding risk
+                    // not worth taking on for an unverified name when
+                    // "Wisma" was already the known quantity. The palette/
+                    // type direction from that pass stayed; only the name
+                    // itself reverted. The mark drawable itself
+                    // (ic_wisma_mark -- resource name unchanged, only its
+                    // pixels were ever brand-specific) still reads fine
+                    // under the new direction; letterSpacing loosened from
+                    // -0.5sp, tuned for Sora's tight geometric tracking,
+                    // which crowded Fraunces' serif letterforms at this
+                    // size -- kept loosened, that part was never about the
+                    // name.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
                             painter = painterResource(R.drawable.ic_wisma_mark),
@@ -241,7 +249,7 @@ fun OverviewScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Warden",
+                            "WISMA",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
