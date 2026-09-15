@@ -1,9 +1,11 @@
 package com.venunair.wisma.ui.additem
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -80,6 +82,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -110,6 +115,7 @@ import com.venunair.wisma.data.planTierLabel
 import com.venunair.wisma.data.subcategoriesFor
 import com.venunair.wisma.ocr.parseReceiptFields
 import com.venunair.wisma.ocr.recognizeText
+import com.venunair.wisma.pdf.PdfDecryptor
 import com.venunair.wisma.pdf.PdfPageRenderer
 import com.venunair.wisma.ui.attachment.AttachmentThumbnailRow
 import com.venunair.wisma.ui.attachment.AttachmentViewerDialog
@@ -132,7 +138,17 @@ private class AddEditViewModelFactory(
         AddEditItemViewModel(repository) as T
 }
 
-private const val MAX_OCR_PAGES = 3
+// Bumped 3 -> 5, 2026-09-15: a real user shared a single PDF bundling a
+// covering letter, a tax invoice, AND the actual policy as sequential
+// pages -- a common shape for insurer-issued documents in general, not
+// a one-off. The policy's own schedule/dates page could easily sit
+// beyond page 3 once two unrelated cover pages precede it, so the old
+// cap risked never even attempting OCR on the one page that actually
+// has the expiry/policy-period info findExpiryDate looks for. Each
+// extra page costs one more bitmap render + on-device ML Kit pass,
+// which is why this stays a bounded cap rather than "OCR every page" --
+// 5 is a deliberate, modest headroom increase, not "no limit".
+private const val MAX_OCR_PAGES = 5
 
 private data class PendingAttachment(
     val id: Long,
@@ -151,6 +167,18 @@ private fun PendingAttachment.toDisplayAttachment() = Attachment(
     thumbnailUri = thumbnailUri,
     rawOcrText = rawOcrText,
     source = source
+)
+
+/**
+ * Password-protected PDF support: holds the already-copied-to-app-storage
+ * local PDF ([localUri], a content:// Uri) that PdfDecryptor.isPasswordProtected
+ * flagged, so the password dialog can retry it with PdfDecryptor once the
+ * user enters a password -- see AddEditItemScreen's handleNewAttachment/
+ * processLocalAttachment split.
+ */
+private data class PdfPasswordPrompt(
+    val localUri: Uri,
+    val source: AttachmentSource
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -344,6 +372,15 @@ fun AddEditItemScreen(
     var viewerAttachment by remember { mutableStateOf<Attachment?>(null) }
     var isProcessingAttachment by remember { mutableStateOf(false) }
 
+    // Password-protected PDF support -- see PdfDecryptor.kt and
+    // PdfPasswordPrompt's own doc comment. pdfPasswordPrompt being non-null
+    // is what drives the password AlertDialog below; pdfPasswordError shows
+    // an inline "incorrect password" message without dismissing the dialog,
+    // so the user can just retry without re-picking the file.
+    var pdfPasswordPrompt by remember { mutableStateOf<PdfPasswordPrompt?>(null) }
+    var pdfPasswordInput by remember { mutableStateOf("") }
+    var pdfPasswordError by remember { mutableStateOf<String?>(null) }
+
     DisposableEffect(Unit) {
         onDispose {
             pendingAttachments.forEach { pending ->
@@ -354,11 +391,12 @@ fun AddEditItemScreen(
     }
 
     // ── OCR + attachment handling (unchanged from Sprint 4) ─────────
-    suspend fun handleNewAttachment(sourceUri: Uri, mimeType: AttachmentMimeType, source: AttachmentSource) {
-        isProcessingAttachment = true
-        try {
-            val localUri = AttachmentStorage.copyToAppStorage(context, sourceUri, mimeType)
-
+    // Split from handleNewAttachment (below) so the password-unlock path
+    // (submitPdfPassword) can feed an already-local, already-decrypted PDF
+    // straight into the same OCR/thumbnail/attach logic every other
+    // attachment goes through, without re-copying it or re-checking it for
+    // a password it no longer has.
+    suspend fun processLocalAttachment(localUri: Uri, mimeType: AttachmentMimeType, source: AttachmentSource) {
             val ocrBitmap: Bitmap? = when (mimeType) {
                 AttachmentMimeType.PDF -> runCatching { PdfPageRenderer.renderPage(context, localUri) }.getOrNull()
                 AttachmentMimeType.IMAGE -> decodeBitmapForOcr(context, localUri.toString())
@@ -408,8 +446,27 @@ fun AddEditItemScreen(
                 if (purchaseDate == null && parsed.purchaseDate != null) {
                     purchaseDate = parsed.purchaseDate; filledAnything = true
                 }
+                // Bug fix, 2026-09-15: see ParsedReceiptFields.expiryDate's
+                // own doc comment -- OCR now actually looks for an expiry/
+                // valid-until/policy-period date instead of this field
+                // never being attempted at all.
+                if (expiryDate == null && parsed.expiryDate != null) {
+                    expiryDate = parsed.expiryDate; filledAnything = true
+                }
                 if (costText.isBlank() && parsed.cost != null) {
                     costText = parsed.cost.toString(); filledAnything = true
+                }
+                // Bug fix, 2026-09-15: a real user's shared insurance
+                // policy never changed the category off its WARRANTY
+                // default -- OCR was never taught to look at all. Category
+                // has no "blank" state to gate on like the text fields
+                // above, so "still a brand-new item, still sitting at the
+                // untouched WARRANTY default" stands in for that same
+                // "hasn't been filled in yet" check -- an existing item's
+                // category was already a deliberate choice and is never
+                // touched by adding a new attachment to it.
+                if (existingItem == null && category == ItemCategory.WARRANTY && parsed.category != null) {
+                    category = parsed.category; filledAnything = true
                 }
                 if (serialNumber.isBlank() && parsed.serialNumber != null) {
                     serialNumber = parsed.serialNumber; filledAnything = true
@@ -459,6 +516,70 @@ fun AddEditItemScreen(
                     )
                 )
             }
+    }
+
+    suspend fun handleNewAttachment(sourceUri: Uri, mimeType: AttachmentMimeType, source: AttachmentSource) {
+        isProcessingAttachment = true
+        try {
+            // "pick the file name as default" -- same default the Share-
+            // intent flow already applies (see the pendingShareUri
+            // LaunchedEffect below), now also applied here so the in-app
+            // PDF/gallery pickers behave the same way. Queried from
+            // sourceUri (the ORIGINAL content:// Uri) before it's copied
+            // below -- copyToAppStorage's local copy gets a random UUID
+            // filename with no connection to what the user actually picked.
+            // Gated to GALLERY_PICKER/PDF_DOCUMENT_PICKER only: CAMERA has
+            // no pre-existing filename to reuse (CameraX writes straight
+            // into a fresh UUID-named file), and SHARE already has its own
+            // handling below with a friendlier fallback name.
+            if (name.isBlank() && (source == AttachmentSource.GALLERY_PICKER || source == AttachmentSource.PDF_DOCUMENT_PICKER)) {
+                queryDisplayName(context, sourceUri)?.let { fileName -> name = stripFileExtension(fileName) }
+            }
+            val localUri = AttachmentStorage.copyToAppStorage(context, sourceUri, mimeType)
+            // Password-protected PDF support -- checked BEFORE the normal
+            // OCR/thumbnail pipeline runs at all, since renderPage would
+            // just throw SecurityException for this exact document shape
+            // (see PdfDecryptor.isPasswordProtected's own doc comment for
+            // why that's a reliable signal specifically for "encrypted",
+            // not any other kind of bad-PDF failure). Puts up the password
+            // dialog instead of silently producing an attachment with no
+            // thumbnail and no OCR text, which is what used to happen here.
+            if (mimeType == AttachmentMimeType.PDF && PdfDecryptor.isPasswordProtected(context, localUri)) {
+                pdfPasswordPrompt = PdfPasswordPrompt(localUri, source)
+                pdfPasswordInput = ""
+                pdfPasswordError = null
+                return
+            }
+            processLocalAttachment(localUri, mimeType, source)
+        } finally {
+            isProcessingAttachment = false
+        }
+    }
+
+    suspend fun submitPdfPassword() {
+        val pending = pdfPasswordPrompt ?: return
+        isProcessingAttachment = true
+        pdfPasswordError = null
+        try {
+            when (val result = PdfDecryptor.removePasswordProtection(context, pending.localUri, pdfPasswordInput)) {
+                is PdfDecryptor.UnlockResult.Success -> {
+                    pdfPasswordPrompt = null
+                    pdfPasswordInput = ""
+                    // The original encrypted local copy (pending.localUri,
+                    // made by handleNewAttachment's copyToAppStorage before
+                    // the password check) is now orphaned -- nothing ever
+                    // references it once result.decryptedUri takes over, so
+                    // it's cleaned up here rather than left as dead storage.
+                    AttachmentStorage.deleteBackingFile(context, pending.localUri.toString())
+                    processLocalAttachment(result.decryptedUri, AttachmentMimeType.PDF, pending.source)
+                }
+                PdfDecryptor.UnlockResult.WrongPassword -> {
+                    pdfPasswordError = context.getString(R.string.pdf_password_incorrect)
+                }
+                PdfDecryptor.UnlockResult.Failure -> {
+                    pdfPasswordError = context.getString(R.string.pdf_password_failure)
+                }
+            }
         } finally {
             isProcessingAttachment = false
         }
@@ -476,9 +597,22 @@ fun AddEditItemScreen(
             if (name.isBlank()) {
                 name = pendingShareDisplayName?.let(::stripFileExtension) ?: sharedItemDefaultName
             }
-            if (expiryDate == null) {
-                expiryDate = LocalDate.now().plusYears(1)
-            }
+            // Bug fix, 2026-09-15: this used to blindly default expiryDate
+            // to "today + 1 year" the moment a file was shared, BEFORE OCR
+            // even ran -- a guess with no connection to anything on the
+            // actual document, and one OCR could never correct afterward,
+            // since the auto-fill below only ever fills fields that are
+            // still blank. A real user hit this directly: shared a
+            // multi-page insurance policy, and the saved expiry was just
+            // "day I happened to share it + 1 year", not the policy's
+            // real end date. Removed -- handleNewAttachment's OCR pass
+            // now looks for an actual expiry-labeled date itself (see
+            // ReceiptFieldParser.findExpiryDate), and if it finds nothing,
+            // leaving the field blank (same as the camera/gallery/PDF-
+            // picker attachment flows already did) is honest: the
+            // required-field validation on Save then correctly asks the
+            // user for the real date, instead of quietly shipping a wrong
+            // one that looks like it was already filled in correctly.
             val mt = pendingShareMimeType
                 ?.let { runCatching { AttachmentMimeType.valueOf(it) }.getOrNull() }
                 ?: AttachmentMimeType.IMAGE
@@ -1236,6 +1370,8 @@ fun AddEditItemScreen(
             // handleNewAttachment's silent blank-fields-only auto-fill above.
             onApplyVendor = { vendor = it },
             onApplyPurchaseDate = { purchaseDate = it },
+            onApplyExpiryDate = { expiryDate = it },
+            onApplyCategory = { category = it },
             onApplyCost = { costText = it.toString() },
             onApplySerialNumber = { serialNumber = it },
             onApplyModelNumber = { modelNumber = it },
@@ -1262,6 +1398,60 @@ fun AddEditItemScreen(
             }
         )
     }
+
+    // Password-protected PDF support -- see PdfPasswordPrompt/PdfDecryptor.
+    // Cancel discards the encrypted local copy handleNewAttachment already
+    // made (nothing else ever references it) rather than leaving it as
+    // dead storage, same cleanup handleNewAttachment/DisposableEffect
+    // already does for a fully-processed pending attachment.
+    pdfPasswordPrompt?.let { pending ->
+        AlertDialog(
+            onDismissRequest = {
+                AttachmentStorage.deleteBackingFile(context, pending.localUri.toString())
+                pdfPasswordPrompt = null
+                pdfPasswordInput = ""
+                pdfPasswordError = null
+            },
+            title = { Text(stringResource(R.string.pdf_password_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.pdf_password_dialog_message))
+                    OutlinedTextField(
+                        value = pdfPasswordInput,
+                        onValueChange = { pdfPasswordInput = it; pdfPasswordError = null },
+                        label = { Text(stringResource(R.string.pdf_password_field_label)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = pdfPasswordError != null,
+                        supportingText = pdfPasswordError?.let { error -> { Text(error) } },
+                        enabled = !isProcessingAttachment,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (isProcessingAttachment) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { scope.launch { submitPdfPassword() } },
+                    enabled = pdfPasswordInput.isNotBlank() && !isProcessingAttachment
+                ) { Text(stringResource(R.string.unlock_button)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        AttachmentStorage.deleteBackingFile(context, pending.localUri.toString())
+                        pdfPasswordPrompt = null
+                        pdfPasswordInput = ""
+                        pdfPasswordError = null
+                    },
+                    enabled = !isProcessingAttachment
+                ) { Text(stringResource(R.string.cancel_button)) }
+            }
+        )
+    }
 }
 
 // ── Helper composables ──────────────────────────────────────────────
@@ -1269,6 +1459,25 @@ fun AddEditItemScreen(
 private enum class DateFieldTarget { PURCHASE, EXPIRY }
 
 private fun stripFileExtension(fileName: String): String = fileName.substringBeforeLast('.', fileName)
+
+/**
+ * Feedback, 2026-09-15: "pick the file name as default" -- Name already
+ * defaulted from the shared file's display name on the Share-intent path
+ * (ShareReceiverActivity queries this same DISPLAY_NAME column for that
+ * flow), but the in-app "Attach PDF"/"Choose from gallery" pickers never
+ * did the same thing, purely because handleNewAttachment never looked --
+ * not a deliberate scope limit, just an inconsistency between the two ways
+ * of getting a file into this screen. Not every content provider populates
+ * DISPLAY_NAME, so a null return here is an ordinary, expected outcome
+ * (same "found nothing" convention ReceiptFieldParser.kt documents for
+ * OCR), not an error.
+ */
+private fun queryDisplayName(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+    }
+}.getOrNull()
 
 /**
  * Grouped form section — the "fieldset" card pattern from

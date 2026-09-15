@@ -502,6 +502,43 @@ android {
         versionCode = 52
         versionName = "0.15.12-applicationid-rename"
 
+        // 0.15.13-pdf-password-support: 2026-09-15 -- reported same day,
+        // a second real insurance PDF this time needing a password to
+        // open. android.graphics.pdf.PdfRenderer (every other PDF path in
+        // this app -- see PdfPageRenderer.kt) simply cannot open an
+        // encrypted PDF: no password parameter exists before API 35
+        // (Android 15), which is effectively this app's whole real
+        // userbase given minSdk 26, and it used to fail silently
+        // (runCatching {}.getOrNull() at the handleNewAttachment call
+        // site) -- no thumbnail, no OCR fields, no indication why.
+        // Confirmed opening the PDF in another viewer first doesn't help:
+        // a Share intent hands this app the same still-encrypted bytes
+        // regardless of what unlocked it for viewing elsewhere.
+        // New: PdfDecryptor.kt (pulls in PdfBox-Android, com.tom-roush:
+        // pdfbox-android -- Apache 2.0, free, ~few MB APK size increase --
+        // reversing PdfPageRenderer.kt's original "$0-new-dependency-cost"
+        // decision, now that a real document that constraint can't handle
+        // has actually shown up). Used for exactly one job: given a
+        // user-supplied password, open the encrypted PDF, strip its
+        // security, and save a plain decrypted copy into this app's normal
+        // attachment storage -- from that point on it flows through the
+        // unchanged native PdfPageRenderer pipeline (thumbnail, OCR, the
+        // in-app viewer) like any other PDF. The password itself is used
+        // only transiently to open the document; it's never written to
+        // disk, the database, or logs. handleNewAttachment now checks
+        // PdfDecryptor.isPasswordProtected (narrowly, via the specific
+        // SecurityException PdfRenderer throws for this exact case) before
+        // the OCR pipeline runs at all, and puts up a password AlertDialog
+        // (Unlock/Cancel, inline "incorrect password" retry) instead of
+        // silently producing an empty attachment.
+        // Known gap, not fixed this pass: if the app is backgrounded or
+        // navigated away from while this dialog is still open/unresolved,
+        // the already-copied encrypted local file isn't cleaned up (a
+        // storage leak, not a correctness bug -- it's just an orphaned
+        // file, never referenced by any Attachment/PendingAttachment row).
+        versionCode = 53
+        versionName = "0.15.13-pdf-password-support"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -680,4 +717,26 @@ dependencies {
     implementation(libs.google.api.client.android)
     implementation(libs.google.api.services.drive)
     implementation(libs.google.http.client.gson)
+
+    // Phase 3 (2026-09-15): tablet/foldable two-pane list-detail layout.
+    // No tablet or foldable device available to test on in this
+    // environment -- built against Google's documented breakpoints and
+    // the real, decompiled 1.3.0 API surface (there is no
+    // "NavigableListDetailPaneScaffold" convenience composable in this
+    // stable version despite some docs describing one; ListDetailPaneScaffold
+    // + rememberListDetailPaneScaffoldNavigator are composed by hand
+    // instead -- see ui/home/ProductsAdaptiveScreen.kt), not verified on
+    // real large-screen hardware.
+    implementation(libs.adaptive)
+    implementation(libs.adaptive.layout)
+    implementation(libs.adaptive.navigation)
+
+    // Password-protected PDF support -- see PdfDecryptor.kt and
+    // libs.versions.toml's pdfbox-android entry for why this is the one
+    // place in the app pulling in a third-party PDF library, reversing
+    // PdfPageRenderer.kt's original "$0-new-dependency-cost" decision now
+    // that a real user hit a document the native renderer categorically
+    // cannot open (android.graphics.pdf.PdfRenderer has no password
+    // parameter before API 35, and minSdk here is 26).
+    implementation(libs.pdfbox.android)
 }

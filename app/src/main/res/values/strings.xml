@@ -71,6 +71,14 @@
     <string name="action_attach_pdf">Attach PDF</string>
     <string name="pick_date">Pick date</string>
 
+    <!-- Password-protected PDF support -->
+    <string name="pdf_password_dialog_title">Password-protected PDF</string>
+    <string name="pdf_password_dialog_message">This PDF needs a password to open. Enter it below — it\'s only used to unlock this file and is never saved.</string>
+    <string name="pdf_password_field_label">Password</string>
+    <string name="pdf_password_incorrect">Incorrect password — try again.</string>
+    <string name="pdf_password_failure">Couldn\'t open this PDF. It may be corrupted.</string>
+    <string name="unlock_button">Unlock</string>
+
     <!-- Item Detail screen -->
     <string name="item_fallback_title">Item</string>
     <string name="loading">Loading…</string>

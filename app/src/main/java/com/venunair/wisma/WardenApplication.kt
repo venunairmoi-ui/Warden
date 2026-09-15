@@ -13,6 +13,7 @@ import com.venunair.wisma.data.WardenDatabase
 import com.venunair.wisma.reminders.DigestNotificationWorker
 import com.venunair.wisma.reminders.NotificationHelper
 import com.venunair.wisma.reminders.ReminderScheduler
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,6 +51,13 @@ class WardenApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Password-protected PDF support: PdfBox-Android needs its resource
+        // loader initialized once, before any PDDocument.load call, or it
+        // can't find its bundled font/glyph assets -- see PdfDecryptor.kt,
+        // the only caller. Cheap, safe to run unconditionally every cold
+        // start even on the (large majority of) sessions that never touch
+        // an encrypted PDF.
+        PDFBoxResourceLoader.init(this)
         // Phase 2: MUST run before `database` (below) or anything that
         // touches it is ever accessed -- see DriveBackupManager's
         // applyPendingRestoreIfAny doc comment for why a restored backup

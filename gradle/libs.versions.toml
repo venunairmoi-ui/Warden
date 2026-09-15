@@ -24,6 +24,8 @@ playServicesAuth = "22.0.0"
 googleApiClientAndroid = "2.8.0"
 googleApiServicesDrive = "v3-rev20260428-2.0.0"
 googleHttpClientGson = "1.47.0"
+material3Adaptive = "1.2.0"
+pdfboxAndroid = "2.0.27.0"
 
 [libraries]
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -67,6 +69,23 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClientAndroid" }
 google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version.ref = "googleApiServicesDrive" }
 google-http-client-gson = { group = "com.google.http-client", name = "google-http-client-gson", version.ref = "googleHttpClientGson" }
+
+# Phase 3: tablet/foldable two-pane list-detail layout
+adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive", version.ref = "material3Adaptive" }
+adaptive-layout = { group = "androidx.compose.material3.adaptive", name = "adaptive-layout", version.ref = "material3Adaptive" }
+adaptive-navigation = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation", version.ref = "material3Adaptive" }
+
+# Password-protected PDF support: android.graphics.pdf.PdfRenderer (used
+# everywhere else in this app for PDFs -- see PdfPageRenderer.kt) cannot
+# open an encrypted PDF at all (throws SecurityException, no password
+# parameter exists pre-Android 15/API 35, which is nearly this app's whole
+# real userbase given minSdk 26). This is the one place PdfBox-Android is
+# used, and only for one narrow job: open an encrypted PDF with a
+# user-supplied password, strip its security, and save a plain decrypted
+# copy -- see PdfDecryptor.kt. Every other PDF operation in this app (page
+# count, rendering, thumbnails) still goes through the native renderer on
+# that decrypted copy, unchanged.
+pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

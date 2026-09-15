@@ -1,5 +1,6 @@
 package com.venunair.wisma.ocr
 
+import com.venunair.wisma.data.ItemCategory
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -43,6 +44,17 @@ import java.util.Locale
 data class ParsedReceiptFields(
     val vendor: String? = null,
     val purchaseDate: LocalDate? = null,
+    /** Feedback, 2026-09-15: a real user shared a multi-page insurance
+     *  policy (covering letter + tax invoice + the policy itself) and
+     *  got the wrong expiry -- root-caused to two compounding gaps: this
+     *  field didn't exist at all (OCR never looked for an expiry/valid-
+     *  until date, only ever a purchase date), and AddEditItemScreen's
+     *  share-intent handler silently defaulted expiryDate to "today +1
+     *  year" the moment a file was shared, before OCR even ran -- a
+     *  guess with no connection to anything printed on the actual
+     *  document, and one OCR could never override since it only ever
+     *  fills fields that are still blank. See [findExpiryDate]. */
+    val expiryDate: LocalDate? = null,
     val cost: Double? = null,
     /** Sprint 6: serial number extracted from labeled text on the document. */
     val serialNumber: String? = null,
@@ -53,7 +65,15 @@ data class ParsedReceiptFields(
     /** Feedback, 2026-08-26: invoice/bill/receipt/order number. */
     val invoiceNumber: String? = null,
     /** Feedback, 2026-08-26: policy/contract/AMC/warranty-card number. */
-    val referenceNumber: String? = null
+    val referenceNumber: String? = null,
+    /** Feedback, 2026-09-15: the same real-user report that led to
+     *  [expiryDate] also flagged that sharing an insurance policy never
+     *  changed the category off its WARRANTY default. Deliberately only
+     *  attempted for the categories with a strong, specific self-
+     *  identifying document phrase (see [findCategory]) -- unlike every
+     *  other field here, a wrong category guess is worse than a wrong
+     *  string, since it changes which fields the form even shows. */
+    val category: ItemCategory? = null
 )
 
 // Deliberately narrow, high-precision candidate patterns over broad ones --
@@ -161,7 +181,17 @@ private val KNOWN_VENDORS = listOf(
     "Blue Star", "Daikin", "Hitachi", "Panasonic", "Sony", "OnePlus", "Xiaomi",
     "Apple", "Croma", "Reliance Digital", "Amazon", "Flipkart", "Otis",
     "Kone", "Schindler", "HDFC ERGO", "ICICI Lombard", "Bajaj Allianz",
-    "Netflix", "Airtel", "Jio", "Havells", "Crompton", "Philips"
+    "Netflix", "Airtel", "Jio", "Havells", "Crompton", "Philips",
+    // Feedback, 2026-09-15: real-device testing (this list's own stated bar
+    // for extending it) turned up two more real insurers vendor detection
+    // kept missing -- neither has a "Sold by:"/"Seller:"-style labeled line
+    // (findVendorFromLabel never applies to an insurance policy schedule
+    // the way it does an e-commerce invoice), so the whitelist is the only
+    // path that can ever catch these. "Generali Central" and "Future
+    // Generali" both included since a real transition letter from this
+    // insurer explicitly states a policy may bear either name during their
+    // ongoing rebrand.
+    "Tata AIG", "Generali Central", "Future Generali"
 )
 
 // Feedback, 2026-08-26: a real receipt/invoice/warranty card almost always
@@ -236,18 +266,67 @@ fun parseReceiptFields(rawText: String): ParsedReceiptFields {
     return ParsedReceiptFields(
         vendor = findVendor(lines, rawText),
         purchaseDate = findDate(lines),
+        expiryDate = findExpiryDate(lines),
         cost = findCost(lines, rawText),
         serialNumber = findLabeledValue(lines, SERIAL_NUMBER_KEYWORDS),
         modelNumber = findLabeledValue(lines, MODEL_NUMBER_KEYWORDS),
         retailer = findRetailer(lines, rawText),
         invoiceNumber = findLabeledValue(lines, INVOICE_NUMBER_KEYWORDS),
-        referenceNumber = findLabeledValue(lines, REFERENCE_NUMBER_KEYWORDS)
+        referenceNumber = findLabeledValue(lines, REFERENCE_NUMBER_KEYWORDS),
+        category = findCategory(rawText)
     )
 }
 
+// Feedback, 2026-09-15: deliberately a SHORT list of strong, specific,
+// multi-word phrases a document uses to identify ITSELF -- not single
+// words like "insurance" or "warranty" that show up constantly in
+// boilerplate/legal text regardless of what the document actually is.
+// Checked in this order (most specific/least ambiguous first) since a
+// long document could in principle mention more than one of these
+// phrases in passing; the first real match wins. SUBSCRIPTION/
+// MEMBERSHIP/OTHER deliberately have no entry here -- those categories
+// don't have a comparably strong, standard self-identifying phrase to
+// anchor to, and a weak guess is worse than leaving the form's existing
+// default alone (see ParsedReceiptFields.category's own doc comment).
+private val CATEGORY_KEYWORDS: List<Pair<ItemCategory, List<String>>> = listOf(
+    ItemCategory.INSURANCE to listOf(
+        "insurance policy", "policy schedule", "sum insured",
+        "certificate of insurance", "insured name", "period of insurance"
+    ),
+    ItemCategory.AMC to listOf(
+        "annual maintenance contract", "amc agreement", "maintenance agreement"
+    ),
+    ItemCategory.WARRANTY to listOf(
+        "warranty card", "warranty certificate", "guarantee card"
+    )
+)
+
+private fun findCategory(rawText: String): ItemCategory? =
+    CATEGORY_KEYWORDS.firstOrNull { (_, phrases) ->
+        phrases.any { phrase -> rawText.contains(phrase, ignoreCase = true) }
+    }?.first
+
+// Bug fix, 2026-09-15: a real document's vendor came back as "LG" -- a
+// document that had nothing to do with LG at all. Root cause: this whitelist
+// check was a bare, unanchored String.contains, so a short brand name like
+// "LG" matches as soon as those two letters appear ANYWHERE in the raw OCR
+// text, including embedded inside a totally unrelated policy number, GSTIN,
+// or any other alphanumeric code on the page -- exactly the kind of
+// confidently-wrong guess this whole file's design is supposed to avoid,
+// but the whitelist fallback was never actually held to that bar the way
+// every keyword/label check elsewhere in this file already is (those are
+// multi-word phrases, inherently much lower collision risk). Requires an
+// actual word boundary on both sides now, so "LG" can still match a real
+// standalone "LG" token but not two letters sitting mid-string inside a
+// longer alphanumeric run -- \b requires a transition to/from a non-word
+// character, which a contiguous code like "27AABLG91R2Z8" never has in its
+// middle.
+private fun containsWholeWord(rawText: String, phrase: String): Boolean =
+    Regex("\\b${Regex.escape(phrase)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(rawText)
+
 private fun findVendor(lines: List<String>, rawText: String): String? =
     findVendorFromLabel(lines)
-        ?: KNOWN_VENDORS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
+        ?: KNOWN_VENDORS.firstOrNull { known -> containsWholeWord(rawText, known) }
 
 private fun findVendorFromLabel(lines: List<String>): String? {
     val raw = findLabeledValue(lines, VENDOR_LABEL_KEYWORDS) ?: return null
@@ -260,7 +339,9 @@ private fun findVendorFromLabel(lines: List<String>): String? {
 
 private fun findRetailer(lines: List<String>, rawText: String): String? =
     findLabeledValue(lines, RETAILER_KEYWORDS)
-        ?: KNOWN_RETAILERS.firstOrNull { known -> rawText.contains(known, ignoreCase = true) }
+        // Same word-boundary fix as findVendor above -- KNOWN_RETAILERS is
+        // the same shape of short-name whitelist with the same collision risk.
+        ?: KNOWN_RETAILERS.firstOrNull { known -> containsWholeWord(rawText, known) }
 
 private fun findDate(lines: List<String>): LocalDate? {
     // Pass 1: a date on a line explicitly labeled as THE date (and not
@@ -285,21 +366,192 @@ private fun findDate(lines: List<String>): LocalDate? {
 private fun findDateIn(candidateLines: List<String>): LocalDate? {
     candidateLines.forEach { line ->
         DATE_CANDIDATE_REGEX.findAll(line).forEach { match ->
-            // Strip any stray internal space DATE_CANDIDATE_REGEX tolerated
-            // (see its comment) before parsing -- DATE_FORMATS' patterns
-            // have no whitespace in them, so "05/04/2 025" needs to become
-            // "05/04/2025" right here to actually parse. Scoped to just
-            // this one matched substring, never the whole line.
-            val candidate = match.value.replace(Regex("""\s+"""), "")
-            for (formatter in DATE_FORMATS) {
-                try {
-                    return LocalDate.parse(candidate, formatter)
-                } catch (e: DateTimeParseException) {
-                    // Not this format -- try the next one against the same
-                    // candidate substring before moving on to the next match.
-                }
-            }
+            parseDateCandidate(match.value)?.let { return it }
         }
+    }
+    return null
+}
+
+// Strips any stray internal space DATE_CANDIDATE_REGEX tolerated (see its
+// comment) before parsing -- DATE_FORMATS' patterns have no whitespace in
+// them, so "05/04/2 025" needs to become "05/04/2025" right here to
+// actually parse. Scoped to just the one matched substring passed in,
+// never a whole line. Factored out of findDateIn so findExpiryDate below
+// can reuse the same per-candidate parsing without duplicating the
+// DATE_FORMATS loop.
+private fun parseDateCandidate(rawMatch: String): LocalDate? {
+    val candidate = rawMatch.replace(Regex("""\s+"""), "")
+    for (formatter in DATE_FORMATS) {
+        try {
+            return LocalDate.parse(candidate, formatter)
+        } catch (e: DateTimeParseException) {
+            // Not this format -- try the next one against the same
+            // candidate substring.
+        }
+    }
+    return null
+}
+
+// Feedback, 2026-09-15: a real user shared a multi-page insurance policy
+// and got the wrong expiry -- this app had NO expiry-date extraction at
+// all (see ParsedReceiptFields.expiryDate's own doc comment for the full
+// story). EXCLUDED_DATE_LINE_KEYWORDS above already walks PAST exactly
+// these lines when looking for a purchase date, on purpose -- this is
+// the other half: go BACK to those same excluded lines and pull the
+// expiry-relevant date off them instead of skipping past them.
+//
+// Single-date labels, where the first (and normally only) date on the
+// line IS the expiry -- safe to reuse findDateIn's "first match wins"
+// behavior directly.
+private val EXPIRY_SINGLE_DATE_KEYWORDS = listOf(
+    "valid until", "valid upto", "valid up to", "valid till",
+    "expiry date", "expires on", "expiration date",
+    "warranty valid till", "warranty expires", "coverage ends",
+    "renewal date", "next due date", "cover ends", "cover expires"
+)
+
+// Lines printing a START-to-END range, where only the LATER date is the
+// expiry -- e.g. "Policy Period: 15-Sep-2026 to 14-Sep-2027", "Valid
+// from 01/04/2026 to 31/03/2027". Deliberately handled separately from
+// the single-date keywords above: reusing findDateIn's "first match on
+// the line" here would grab the START date, the wrong one.
+private val EXPIRY_RANGE_LINE_KEYWORDS = listOf(
+    "policy period", "coverage period", "valid from", "period of insurance"
+)
+
+// Bug fix, 2026-09-15 (follow-up): a real insurance policy schedule prints
+// "Period of Insurance : From 00:00 hrs of 09/12/2025 To Midnight of
+// 08/12/2026" inside a narrow table column -- and ML Kit's Text.text
+// reconstructs lines from the rendered page's actual visual layout, not
+// logical sentences, so a phrase that doesn't fit the column width
+// routinely wraps across 2-3 separate OCR-detected lines. Restricting the
+// date search to the exact line carrying the keyword (the original
+// behaviour) meant the keyword line was found but had no end date ON IT,
+// so expiryDate silently stayed null even though the date is right there
+// on the page, one OCR line down. EXPIRY_LINE_WINDOW lines is enough
+// slack to catch that wrap without reaching far enough to risk grabbing a
+// date from an unrelated table row/cell.
+private const val EXPIRY_LINE_WINDOW = 3
+
+private fun findExpiryDate(lines: List<String>): LocalDate? {
+    // Pass 1: a single, unambiguous expiry-labeled date -- first candidate
+    // found in the labeled line's window wins.
+    findDateNearKeywordLines(lines, EXPIRY_SINGLE_DATE_KEYWORDS) { candidates -> candidates.firstOrNull() }
+        ?.let { return it }
+    // Pass 2: a start-to-end range where the label ("Period of Insurance"
+    // etc.) sits close enough to its own value to land in the same
+    // EXPIRY_LINE_WINDOW-line window -- take the LAST (later, end) date.
+    findDateNearKeywordLines(lines, EXPIRY_RANGE_LINE_KEYWORDS) { candidates -> candidates.maxOrNull() }
+        ?.let { return it }
+    // Pass 3: see findExpiryFromPeriodValue's own comment -- Pass 2 assumes
+    // the label and its value are within a few lines of each other, which a
+    // real insurer invoice/schedule table routinely violates (confirmed
+    // against this app's own on-device OCR output of a real user's
+    // Insurance.pdf, where "Period of Insurance" and its actual "From ...
+    // To ..." value sat FIFTEEN OCR lines apart, each on its own side of a
+    // two-column table ML Kit read as two separate blocks). This pass finds
+    // the value fragment directly, with no dependency on the label being
+    // anywhere nearby at all.
+    return findExpiryFromPeriodValue(lines)
+}
+
+// A policy/coverage period's VALUE text on a real Indian insurer document
+// almost always phrases its start boundary as "From <hh:mm> hrs/hours ...
+// <date>", distinctive enough to anchor on directly. That distinctiveness
+// is exactly what Pass 2 above can't rely on: ML Kit's Text.text groups a
+// table's entire label column together as one block, then its entire value
+// column as a separate, later block, so "Period of Insurance" and its own
+// value can end up many lines apart in the flattened text even though
+// they're printed side-by-side on the page. The value fragment itself,
+// though, stays intact -- confirmed against real pages from TWO different
+// real users' insurance PDFs, two different insurers with two different
+// phrasings of the same underlying fact: "From 00:00 hrs of 09/12/2025 To
+// Midnight of 08/12/2026" (Generali Central -- "hrs OF <date>") and "From
+// 24/12/2023 00:00 hrs TO 23/12/2024 on 23:59 hrs" (Tata AIG -- "hrs TO
+// <date>", no "of" at all). Originally required "hrs of"/"hours of"
+// specifically (a bug in its own right, caught by the second real
+// document -- it simply never matched Tata AIG's phrasing), so this now
+// only requires "from" plus a bare hrs/hours marker; the real precision
+// guard is candidates.size >= 2 below, not the marker text itself, so
+// broadening this doesn't risk returning a wrong single (start-only) date.
+private val POLICY_PERIOD_START_MARKERS = listOf("hrs", "hours")
+private const val EXPIRY_VALUE_WINDOW = 2
+
+private fun findExpiryFromPeriodValue(lines: List<String>): LocalDate? {
+    for (index in lines.indices) {
+        val line = lines[index]
+        val looksLikeStartBoundary = line.contains("from", ignoreCase = true) &&
+            POLICY_PERIOD_START_MARKERS.any { marker -> line.contains(marker, ignoreCase = true) }
+        if (!looksLikeStartBoundary) continue
+        val windowEnd = minOf(index + 1 + EXPIRY_VALUE_WINDOW, lines.size)
+        val candidates = lines.subList(index, windowEnd).flatMap { windowLine ->
+            DATE_CANDIDATE_REGEX.findAll(windowLine).mapNotNull { match -> parseDateCandidate(match.value) }
+        }
+        // Require BOTH dates (start and end) to actually be present in the
+        // window -- if only the start date was found, the end date fell
+        // outside EXPIRY_VALUE_WINDOW and returning the max of a 1-element
+        // list would silently hand back the START date as if it were the
+        // expiry, exactly the wrong-guess-is-worse-than-none mistake this
+        // file exists to avoid.
+        if (candidates.size >= 2) return candidates.max()
+    }
+    return null
+}
+
+// Shared by both findExpiryDate passes -- see EXPIRY_LINE_WINDOW's comment
+// for why this searches a window instead of just the one matched line. For
+// each line carrying one of [keywords] (checked in document order), collects
+// every date-shaped candidate from that line through the next
+// EXPIRY_LINE_WINDOW lines, then hands them to [pick] (first-found for a
+// single-date label, latest for a range's end date) -- the first keyword
+// line whose window yields a usable candidate via [pick] wins.
+private fun findDateNearKeywordLines(
+    lines: List<String>,
+    keywords: List<String>,
+    pick: (List<LocalDate>) -> LocalDate?
+): LocalDate? {
+    for (index in lines.indices) {
+        if (keywords.none { kw -> lines[index].contains(kw, ignoreCase = true) }) continue
+        val windowEnd = minOf(index + 1 + EXPIRY_LINE_WINDOW, lines.size)
+        val candidates = lines.subList(index, windowEnd).flatMap { windowLine ->
+            DATE_CANDIDATE_REGEX.findAll(windowLine).mapNotNull { match -> parseDateCandidate(match.value) }
+        }
+        pick(candidates)?.let { return it }
+    }
+    return null
+}
+
+// Bug fix, 2026-09-15: a real Tata AIG MediCare schedule's Sum Insured came
+// back as ₹20,000 instead of the real ₹20,00,000 -- a 100x-smaller wrong
+// guess, not just a miss. Root cause was two compounding gaps: (1) the real
+// Sum Insured figure ("2,000,000.00") sat many lines away from its own
+// "Sum Insured (Rs.)#" label and currency marker in the OCR text -- the
+// same column-split table layout this file's expiry-date fix already
+// worked around (see findExpiryFromPeriodValue), just for a number instead
+// of a date -- so it was invisible to AMOUNT_REGEX entirely; (2) with no
+// real total line to anchor to, findCost's generic "largest currency-
+// marked amount anywhere on the page" fallback (below) picked "Rs.20,000"
+// instead -- a per-benefit sub-limit from deep in the policy's benefits
+// table ("Upto Rs.20,000 per policy year"), which has nothing to do with
+// the actual sum insured but happens to carry a direct Rs. marker where the
+// real figure doesn't. This pass anchors on the "Sum Insured" label
+// directly (checked BEFORE that risky generic fallback) and searches a
+// window of following lines the same way findDateNearKeywordLines does,
+// taking the LARGEST plain decimal number found there -- Cumulative
+// Bonus/Accidental Death Sum Insured sitting in the same row are never
+// larger than the base Sum Insured for this benefit structure, so max()
+// lands on the right one without needing to disambiguate columns.
+private val SUM_INSURED_LINE_KEYWORDS = listOf("sum insured")
+private const val SUM_INSURED_LINE_WINDOW = 10
+
+private fun findSumInsured(lines: List<String>): Double? {
+    for (index in lines.indices) {
+        if (SUM_INSURED_LINE_KEYWORDS.none { kw -> lines[index].contains(kw, ignoreCase = true) }) continue
+        val windowEnd = minOf(index + 1 + SUM_INSURED_LINE_WINDOW, lines.size)
+        val candidates = lines.subList(index, windowEnd).flatMap { windowLine ->
+            PLAIN_TOTAL_AMOUNT_REGEX.findAll(windowLine).mapNotNull { match -> parseAmount(match.value) }
+        }
+        candidates.maxOrNull()?.let { return it }
     }
     return null
 }
@@ -328,6 +580,11 @@ private fun findCost(lines: List<String>, rawText: String): Double? {
                 ?.let { match -> return parseAmount(match.value) }
         }
     }
+    // See findSumInsured's own comment -- tried before the generic
+    // "largest currency-marked amount anywhere" fallback below, since
+    // that's specifically the heuristic a real insurance benefits table
+    // fools (small per-benefit Rs. sub-limits vs. an unmarked real total).
+    findSumInsured(lines)?.let { return it }
     // Fallback: no line was explicitly labeled a total, so the largest
     // currency-marked amount anywhere on the page is a reasonable proxy --
     // a grand total is very rarely smaller than every line-item price that
