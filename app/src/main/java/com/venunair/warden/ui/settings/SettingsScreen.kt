@@ -1,6 +1,8 @@
 package com.venunair.warden.ui.settings
 
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
@@ -22,8 +25,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -31,8 +37,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +51,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,13 +67,17 @@ import com.venunair.warden.BuildConfig
 import com.venunair.warden.R
 import com.venunair.warden.autodetect.hasMediaImageAccess
 import com.venunair.warden.autodetect.mediaImagesPermission
+import com.venunair.warden.backup.DriveBackupManager
 import com.venunair.warden.data.AVAILABLE_REMINDER_OFFSETS
 import com.venunair.warden.data.DigestFrequency
 import com.venunair.warden.data.Region
 import com.venunair.warden.data.SettingsRepository
 import com.venunair.warden.data.ThemeMode
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+
+private enum class PendingDriveAction { BACKUP, RESTORE }
 
 private class SettingsViewModelFactory(private val repository: SettingsRepository) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -80,8 +95,103 @@ fun SettingsScreen(
     val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory(repository))
     val preferences by viewModel.preferences.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var showAutoDetectExplanation by rememberSaveable { mutableStateOf(false) }
+
+    // ── Phase 2: Google Drive backup/restore ─────────────────────────
+    var backupInProgress by remember { mutableStateOf(false) }
+    var restoreInProgress by remember { mutableStateOf(false) }
+    // Which action (if any) is waiting on the authorization consent
+    // screen the user is currently looking at -- read back in
+    // authorizationLauncher's callback once they return.
+    var pendingAuthAction by remember { mutableStateOf<PendingDriveAction?>(null) }
+    var showRestoreConfirm by remember { mutableStateOf(false) }
+    // Set once restoreNow() finishes staging a downloaded backup -- see
+    // DriveBackupManager.applyPendingRestoreIfAny's doc comment for why
+    // this can't just take effect immediately.
+    var showRestartPrompt by remember { mutableStateOf(false) }
+
+    suspend fun performDriveAction(action: PendingDriveAction, accessToken: String) {
+        when (action) {
+            PendingDriveAction.BACKUP -> {
+                val result = DriveBackupManager.backupNow(context, accessToken)
+                backupInProgress = false
+                result.fold(
+                    onSuccess = {
+                        viewModel.setLastBackupAtMillis(System.currentTimeMillis())
+                        snackbarHostState.showSnackbar(context.getString(R.string.backup_success_snackbar))
+                    },
+                    onFailure = { snackbarHostState.showSnackbar(context.getString(R.string.backup_failed_snackbar)) }
+                )
+            }
+            PendingDriveAction.RESTORE -> {
+                val result = DriveBackupManager.restoreNow(context, accessToken)
+                restoreInProgress = false
+                result.fold(
+                    onSuccess = { outcome ->
+                        when (outcome) {
+                            DriveBackupManager.RestoreOutcome.StagedPendingRestart -> showRestartPrompt = true
+                            DriveBackupManager.RestoreOutcome.NoBackupFound ->
+                                snackbarHostState.showSnackbar(context.getString(R.string.restore_no_backup_snackbar))
+                        }
+                    },
+                    onFailure = { snackbarHostState.showSnackbar(context.getString(R.string.restore_failed_snackbar)) }
+                )
+            }
+        }
+    }
+
+    val authorizationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { activityResult ->
+        val action = pendingAuthAction
+        pendingAuthAction = null
+        val outcome = DriveBackupManager.handleAuthorizationResolution(context, activityResult.data)
+        val accessToken = outcome.getOrNull()?.accessToken
+        Log.d(
+            "SettingsScreen",
+            "authorizationLauncher result: resultCode=${activityResult.resultCode} outcomeSuccess=${outcome.isSuccess} " +
+                "accessToken=${if (accessToken != null) "present" else "NULL"} exception=${outcome.exceptionOrNull()}"
+        )
+        if (action != null && accessToken != null) {
+            scope.launch { performDriveAction(action, accessToken) }
+        } else if (outcome.isFailure || accessToken == null) {
+            backupInProgress = false
+            restoreInProgress = false
+            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.drive_connect_failed_snackbar)) }
+        }
+    }
+
+    fun startDriveAction(action: PendingDriveAction) {
+        if (action == PendingDriveAction.BACKUP) backupInProgress = true else restoreInProgress = true
+        DriveBackupManager.requestAuthorization(
+            context = context,
+            onAuthorized = { result ->
+                val accessToken = result.accessToken
+                Log.d("SettingsScreen", "onAuthorized: hasResolution=${result.hasResolution()} accessToken=${if (accessToken != null) "present (len=${accessToken.length})" else "NULL"}")
+                if (accessToken != null) {
+                    scope.launch { performDriveAction(action, accessToken) }
+                } else {
+                    backupInProgress = false
+                    restoreInProgress = false
+                    scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.drive_connect_failed_snackbar)) }
+                }
+            },
+            onResolutionRequired = { intentSenderRequest: IntentSenderRequest ->
+                Log.d("SettingsScreen", "onResolutionRequired: launching consent intent")
+                pendingAuthAction = action
+                authorizationLauncher.launch(intentSenderRequest)
+            },
+            onFailure = { e ->
+                Log.e("SettingsScreen", "startDriveAction onFailure", e)
+                backupInProgress = false
+                restoreInProgress = false
+                scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.drive_connect_failed_snackbar)) }
+            }
+        )
+    }
 
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -97,6 +207,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // UI redesign pass, 2026-08-25: neutral chrome, same convention
             // as AddEditItemScreen/ItemDetailScreen — Settings is a
@@ -333,10 +444,43 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        stringResource(R.string.settings_backup_coming_soon),
+                        stringResource(R.string.settings_backup_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Button(
+                        onClick = { startDriveAction(PendingDriveAction.BACKUP) },
+                        enabled = !backupInProgress && !restoreInProgress,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (backupInProgress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.backup_in_progress))
+                        } else {
+                            Text(stringResource(R.string.backup_now_button))
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { showRestoreConfirm = true },
+                        enabled = !backupInProgress && !restoreInProgress,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (restoreInProgress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.restore_in_progress))
+                        } else {
+                            Text(stringResource(R.string.restore_button))
+                        }
+                    }
                 }
             }
 
@@ -371,6 +515,39 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showAutoDetectExplanation = false }) { Text("Not now") }
+            }
+        )
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text(stringResource(R.string.restore_confirm_title)) },
+            text = { Text(stringResource(R.string.restore_confirm_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestoreConfirm = false
+                        startDriveAction(PendingDriveAction.RESTORE)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text(stringResource(R.string.restore_confirm_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel_button)) }
+            }
+        )
+    }
+
+    if (showRestartPrompt) {
+        AlertDialog(
+            onDismissRequest = {}, // Restored data only takes effect after a restart -- no "dismiss and ignore" option.
+            title = { Text(stringResource(R.string.restart_prompt_title)) },
+            text = { Text(stringResource(R.string.restart_prompt_body)) },
+            confirmButton = {
+                Button(onClick = { DriveBackupManager.restartApp(context) }) {
+                    Text(stringResource(R.string.restart_now_button))
+                }
             }
         )
     }

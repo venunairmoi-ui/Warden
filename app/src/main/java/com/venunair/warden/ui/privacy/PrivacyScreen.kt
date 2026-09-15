@@ -50,12 +50,10 @@ import kotlinx.coroutines.launch
  * this is read-heavy explanatory content plus one destructive action,
  * not a preference toggle.
  *
- * Scope note: everything below describes today's local-only storage
- * model. The Settings "Backup" section's own copy needs a matching
- * update whenever Drive backup actually ships (Phase 2, blocked on
- * external Google Cloud/OAuth setup as of this writing) -- at that point
- * data does leave the device, opt-in, and this screen's "stays on your
- * device" claim needs to say so explicitly rather than go stale.
+ * Updated 2026-09-15: Google Drive backup/restore shipped this session
+ * (see backup/DriveBackupManager.kt), the app's first-ever network
+ * feature -- "Where your data lives" below now reflects that it's
+ * opt-in, not a claim that nothing ever leaves the device.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,8 +91,13 @@ fun PrivacyScreen(
             item {
                 PrivacySection(title = "Where your data lives") {
                     Text(
-                        "Everything you add — item details, photos, and documents — is stored only on this device, in Warden's private app storage. Nothing is uploaded automatically, there's no account to sign into, and no analytics or ad tracking runs in this app.",
+                        "Everything you add — item details, photos, and documents — is stored only on this device, in Warden's private app storage, unless you turn on Google Drive backup yourself. There's no account required to use Warden, and no analytics or ad tracking runs in this app.",
                         style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "If you back up to Google Drive: your data goes into a hidden folder in your own Google account, invisible in your normal Drive, and only Warden can read it — Warden's developer never sees it. You choose when a backup happens; nothing uploads on its own.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         "If you use Share or Export from another app to bring in a receipt, that file is copied into Warden's own storage — the original stays wherever you shared it from, unaffected.",
@@ -117,6 +120,10 @@ fun PrivacyScreen(
                     PermissionExplanation(
                         name = "Photo access",
                         body = "Only requested if you turn on Auto-detect in Settings, and only to suggest photos that look like a receipt or warranty card — nothing is added to your items without your confirmation, and photo access is off by default."
+                    )
+                    PermissionExplanation(
+                        name = "Internet",
+                        body = "Only used when you choose to back up or restore from Google Drive in Settings. Warden makes no other network connections."
                     )
                 }
             }

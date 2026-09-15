@@ -9,6 +9,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+         Phase 2 (2026-09-15): Google Drive backup/restore. This is the
+         app's FIRST network access of any kind: every claim in
+         PrivacyScreen.kt and settings_tagline about staying local-only
+         needed updating alongside this permission, not after, to avoid
+         going stale the moment this line landed. Not a "normal" install-
+         time-only permission in user-facing terms: Play Store's data
+         safety disclosure needs an entry for "backed up to Google Drive,
+         encrypted in transit, user-initiated" once this actually ships.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
          Sprint 6/9: opt-in auto-detect of new receipts/warranty-card screenshots.
          Declared here because the manifest requires it, but per spec section 7
          this is requested at RUNTIME ONLY when the user explicitly enables

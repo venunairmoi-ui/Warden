@@ -36,4 +36,11 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setRegion(region: Region) {
         viewModelScope.launch { repository.setRegion(region) }
     }
+
+    // Phase 2: stamped after a real Google Drive backup succeeds
+    // (DriveBackupManager.backupNow) -- see settings_backup_last's
+    // display of this value.
+    fun setLastBackupAtMillis(millis: Long) {
+        viewModelScope.launch { repository.setLastBackupAtMillis(millis) }
+    }
 }

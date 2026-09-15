@@ -427,6 +427,48 @@ android {
         versionCode = 49
         versionName = "0.15.9-vault-ledger"
 
+        // 0.15.10-drive-backup: 2026-09-15 -- Google Drive backup/restore,
+        // the app's first network feature. New backup/DriveBackupManager.kt
+        // + Settings' Backup section wired to real Back up now/Restore
+        // buttons (was a "coming soon" placeholder). Uses the Authorization
+        // API (com.google.android.gms.auth.api.identity), NOT the older
+        // GoogleSignInClient -- that class was REMOVED from play-services-
+        // auth entirely as of the version this app pulls; an earlier draft
+        // written from memory against the old API didn't compile
+        // ("unresolved reference: GoogleSignIn"), caught before it shipped.
+        // Scope: DriveScopes.DRIVE_APPDATA only (this app's hidden Drive
+        // folder, invisible in the user's normal Drive, one rolling backup
+        // not a version history). No server/web OAuth client ID needed in
+        // code -- only the Android OAuth client (package + signing SHA-1,
+        // registered directly in Google Cloud Console) required for the
+        // scope-authorization flow this app actually uses.
+        // Restore is staged, not applied live: a downloaded backup is
+        // unzipped to a staging directory, and the actual database-file
+        // swap happens in WardenApplication.onCreate() (via
+        // DriveBackupManager.applyPendingRestoreIfAny(), called before
+        // `database` is ever touched) after the user restarts the app --
+        // swapping Room's live warden.db file out from under an
+        // already-open connection was judged too easy to get subtly wrong
+        // without a device to verify against.
+        // Also: added the INTERNET permission (first ever in this app),
+        // updated PrivacyScreen.kt/settings_tagline's "stays on your
+        // device" claims to say "unless you turn on Drive backup" instead
+        // of going stale, and fixed two Gradle packaging conflicts (a
+        // duplicate META-INF/INDEX.LIST between two transitive Google auth
+        // jars, and Apache HttpClient getting pulled in transitively
+        // despite this app using NetHttpTransport exclusively -- excluded
+        // project-wide via configurations.all).
+        // Verified: full signed assembleRelease build succeeds with R8
+        // minification on. NOT verified: no device available in this
+        // development environment to actually run the sign-in consent
+        // flow, a real backup, or a real restore -- this whole feature
+        // needs an on-device test before being trusted, more so than
+        // anything else shipped so far this project (first feature
+        // touching a network call, external OAuth consent, and a
+        // cross-restart file swap all at once).
+        versionCode = 50
+        versionName = "0.15.10-drive-backup"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -480,6 +522,20 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Phase 2: google-api-client-android pulls in google-auth-
+            // library-oauth2-http and google-auth-library-credentials
+            // transitively, both of which bundle an identical (and
+            // functionally unused at runtime on Android) META-INF/
+            // INDEX.LIST -- a benign packaging duplicate, not a real
+            // conflict, so excluding it is the correct fix rather than
+            // trying to pick one jar's copy over the other's. Same
+            // reasoning for DEPENDENCIES below -- both come from Apache
+            // HttpClient jars that shouldn't even be on the classpath
+            // (see the configurations.all exclude further down), but
+            // still leave this file behind even once excluded from the
+            // dependency graph in some resolution paths.
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/DEPENDENCIES"
         }
     }
 
@@ -509,6 +565,22 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+// Phase 2: the Google Drive backup libraries (google-api-client-android /
+// google-api-services-drive / google-auth-library-*) transitively pull in
+// Apache HttpClient (org.apache.httpcomponents:httpclient/httpcore) as one
+// of several supported HTTP transport options -- unused dead weight here,
+// since DriveBackupManager builds its Drive service on NetHttpTransport
+// exclusively. The per-dependency exclude on google-api-client-android
+// alone wasn't enough (a different transitive path -- google-auth-
+// library-oauth2-http -- pulls it in too), so this excludes it project-
+// wide instead of chasing every path individually. Also avoids the
+// META-INF/DEPENDENCIES packaging clash between httpclient's and
+// httpcore's own copies of that file (see the packaging{} block above).
+configurations.all {
+    exclude(group = "org.apache.httpcomponents", module = "httpclient")
+    exclude(group = "org.apache.httpcomponents", module = "httpcore")
 }
 
 dependencies {
@@ -559,4 +631,20 @@ dependencies {
     implementation(libs.core.splashscreen)
 
     implementation(libs.kotlinx.coroutines.android)
+
+    // Phase 2 (2026-09-15): Google Drive backup/restore. GoogleSignInClient
+    // (not the newer Credential Manager APIs) deliberately -- well-
+    // documented and stable for "sign in + request a Drive scope" is
+    // exactly this app's whole need here, and there's no device available
+    // from this development environment to shake out subtler bugs a
+    // bleeding-edge API might hide. google-api-client-android +
+    // google-api-services-drive are Google's own generated Drive v3 REST
+    // client; google-http-client-gson is the JSON transport they need.
+    implementation(libs.play.services.auth)
+    // Apache HttpClient, transitively pulled by these, is excluded
+    // project-wide instead of per-dependency -- see the
+    // configurations.all block above for why.
+    implementation(libs.google.api.client.android)
+    implementation(libs.google.api.services.drive)
+    implementation(libs.google.http.client.gson)
 }

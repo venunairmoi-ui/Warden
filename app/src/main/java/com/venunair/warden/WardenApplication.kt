@@ -5,6 +5,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.venunair.warden.autodetect.AutoDetectWorker
+import com.venunair.warden.backup.DriveBackupManager
 import com.venunair.warden.data.DigestFrequency
 import com.venunair.warden.data.ItemRepository
 import com.venunair.warden.data.SettingsRepository
@@ -49,6 +50,14 @@ class WardenApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Phase 2: MUST run before `database` (below) or anything that
+        // touches it is ever accessed -- see DriveBackupManager's
+        // applyPendingRestoreIfAny doc comment for why a restored backup
+        // is staged, not applied live, and finished off here at the one
+        // moment it's safe to swap the underlying database file: before
+        // Room has opened anything. A no-op fast file-existence check on
+        // every other cold start where no restore is pending.
+        DriveBackupManager.applyPendingRestoreIfAny(this)
         // Both are safe/cheap to call on every process start: creating an
         // already-existing NotificationChannel is a no-op, and
         // ReminderScheduler.schedule uses KEEP so it won't reset an

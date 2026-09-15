@@ -18,3 +18,10 @@ local.properties
 keystore.properties
 keystore/*.jks
 keystore/*.keystore
+
+# Google Drive backup OAuth credentials (added 2026-09-15) -- the
+# downloaded "client_secret_*.json" from Google Cloud Console contains a
+# real client secret. The client ID itself is fine to embed in app code
+# (it identifies the app, not a user), but this raw file, secret
+# included, must never be committed.
+client_secret_*.json
