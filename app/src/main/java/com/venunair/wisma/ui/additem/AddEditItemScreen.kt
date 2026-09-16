@@ -332,7 +332,19 @@ fun AddEditItemScreen(
     // its own since it's a picker, not typed text), then kept live from
     // then on so it clears itself as soon as the user fixes it -- instead
     // of the old "one generic error banner only after Save" behavior.
+    // Bug fix, 2026-09-16, found via real on-device E2E testing (a static
+    // read alone didn't catch this): Compose's onFocusChanged fires once
+    // on a field's INITIAL composition reporting the baseline "not
+    // focused" state, not only on a real focus->unfocus transition. A
+    // naive `if (!it.isFocused) touched = true` therefore fires on that
+    // very first spurious callback, before the user has ever touched the
+    // field -- so a brand-new Add Item screen opened showing a red "Name
+    // is required" error immediately, with zero interaction. Fixed by
+    // gating on "was this field ever actually focused" first -- see
+    // hasEverBeenFocused below and its three call sites (name, cost,
+    // billing amount).
     var nameTouched by remember { mutableStateOf(false) }
+    var nameHasBeenFocused by remember { mutableStateOf(false) }
     var attemptedSave by remember { mutableStateOf(false) }
     val nameError = (nameTouched || attemptedSave) && name.isBlank()
     val expiryError = attemptedSave && expiryDate == null
@@ -347,7 +359,9 @@ fun AddEditItemScreen(
     // nameError above -- optional fields stay optional, only a genuinely
     // invalid (unparseable or negative) non-blank entry blocks Save.
     var costTouched by remember { mutableStateOf(false) }
+    var costHasBeenFocused by remember { mutableStateOf(false) }
     var billingAmountTouched by remember { mutableStateOf(false) }
+    var billingAmountHasBeenFocused by remember { mutableStateOf(false) }
     val costInvalid = costText.isNotBlank() && (costText.toDoubleOrNull()?.let { it < 0 } ?: true)
     val billingAmountInvalid = billingAmountText.isNotBlank() &&
         (billingAmountText.toDoubleOrNull()?.let { it < 0 } ?: true)
@@ -842,7 +856,13 @@ fun AddEditItemScreen(
                     } else null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onFocusChanged { if (!it.isFocused) nameTouched = true }
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                nameHasBeenFocused = true
+                            } else if (nameHasBeenFocused) {
+                                nameTouched = true
+                            }
+                        }
                 )
                 OutlinedTextField(
                     value = vendor,
@@ -991,7 +1011,13 @@ fun AddEditItemScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onFocusChanged { if (!it.isFocused) costTouched = true }
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                costHasBeenFocused = true
+                            } else if (costHasBeenFocused) {
+                                costTouched = true
+                            }
+                        }
                 )
                 OutlinedTextField(
                     value = amcNumber,
@@ -1189,7 +1215,13 @@ fun AddEditItemScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .onFocusChanged { if (!it.isFocused) billingAmountTouched = true }
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    billingAmountHasBeenFocused = true
+                                } else if (billingAmountHasBeenFocused) {
+                                    billingAmountTouched = true
+                                }
+                            }
                     )
 
                     // Subscription: plan name. Membership: tier name. Same

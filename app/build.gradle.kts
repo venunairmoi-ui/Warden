@@ -669,6 +669,40 @@ android {
         versionCode = 57
         versionName = "0.16.2-audit-fixes"
 
+        // 0.16.3-premature-validation-fix: 2026-09-16 -- found via real
+        // on-device E2E testing (a physical device, not an emulator --
+        // no AVD existed and this was faster/more representative anyway),
+        // NOT from static reading: the Add Item screen showed a red "Name
+        // is required" error immediately on open, before any user
+        // interaction. Reproduced 3 times independently, including a
+        // deliberate re-verification after first suspecting a testing
+        // artifact (a stray tap or a stale composable instance) -- ruled
+        // both out by confirming a genuine fresh navigation via a UI dump
+        // each time.
+        // Root cause: Compose's onFocusChanged fires once on a field's
+        // INITIAL composition, reporting the baseline "not focused" state
+        // -- not only on a real focus-then-unfocus transition. The naive
+        // `if (!it.isFocused) touched = true` pattern (Name, and this
+        // same session's own Cost/Billing-amount fields from the
+        // 0.16.2 audit fixes) fires on that spurious first callback,
+        // before the user ever touches the field. Invisible on Cost/
+        // Billing amount today only because blank is valid for those
+        // optional fields; Name is required, so isBlank() alone was
+        // enough to surface it immediately.
+        // Fixed by gating on "was this field ever actually focused"
+        // first (new nameHasBeenFocused/costHasBeenFocused/
+        // billingAmountHasBeenFocused, one per field) -- touched only
+        // flips true on a real focus-that-then-unfocuses transition, not
+        // on the initial state report.
+        // Verified live on-device (Oppo/OnePlus CPH2573, Android 16):
+        // fresh Add Item opens now show a clean Name field on two
+        // independently-confirmed fresh navigations; the 100-char Name
+        // cap and Cost's negative-number Save-blocking (both from 0.16.2)
+        // were also confirmed working for real on this same device, not
+        // just at compile time. No crashes in logcat throughout.
+        versionCode = 58
+        versionName = "0.16.3-premature-validation-fix"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
