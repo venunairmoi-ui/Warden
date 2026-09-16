@@ -6,6 +6,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.venunair.wisma.autodetect.AutoDetectWorker
 import com.venunair.wisma.backup.DriveBackupManager
+import com.venunair.wisma.billing.BillingManager
 import com.venunair.wisma.data.DigestFrequency
 import com.venunair.wisma.data.ItemRepository
 import com.venunair.wisma.data.SettingsRepository
@@ -42,6 +43,9 @@ class WardenApplication : Application() {
     // Sprint 9: settings persistence (DataStore-backed).
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(this) }
 
+    // Freemium "Premium unlock" purchase -- see billing/BillingManager.kt.
+    val billingManager: BillingManager by lazy { BillingManager(this, settingsRepository) }
+
     // Application has no built-in coroutine scope the way a ViewModel or a
     // lifecycle-aware component does. SupervisorJob so one collector
     // failing (shouldn't happen — DataStore's Flow doesn't throw for a
@@ -73,6 +77,14 @@ class WardenApplication : Application() {
         NotificationHelper.ensureChannel(this)
         ReminderScheduler.schedule(this)
         observeSettingsAndReschedule()
+        // Freemium trial clock (see com.venunair.wisma.license.LicenseState)
+        // -- idempotent, only ever writes once per install, safe to fire on
+        // every cold start.
+        applicationScope.launch { settingsRepository.ensureInstalledAtStamped() }
+        // Freemium "Premium unlock" purchase -- also reconciles this
+        // device's premiumUnlocked flag against Play's own purchase
+        // record on every cold start (see BillingManager.restorePurchases).
+        billingManager.startConnection()
     }
 
     /**

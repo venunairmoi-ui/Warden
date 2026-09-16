@@ -1,5 +1,6 @@
 package com.venunair.wisma.ui.settings
 
+import android.app.Activity
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -68,11 +69,13 @@ import com.venunair.wisma.R
 import com.venunair.wisma.autodetect.hasMediaImageAccess
 import com.venunair.wisma.autodetect.mediaImagesPermission
 import com.venunair.wisma.backup.DriveBackupManager
+import com.venunair.wisma.billing.BillingManager
 import com.venunair.wisma.data.AVAILABLE_REMINDER_OFFSETS
 import com.venunair.wisma.data.DigestFrequency
 import com.venunair.wisma.data.Region
 import com.venunair.wisma.data.SettingsRepository
 import com.venunair.wisma.data.ThemeMode
+import com.venunair.wisma.license.toLicenseState
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -88,6 +91,7 @@ private class SettingsViewModelFactory(private val repository: SettingsRepositor
 @Composable
 fun SettingsScreen(
     repository: SettingsRepository,
+    billingManager: BillingManager,
     onBack: () -> Unit,
     onOpenArchivedItems: () -> Unit,
     onOpenPrivacy: () -> Unit
@@ -99,6 +103,13 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showAutoDetectExplanation by rememberSaveable { mutableStateOf(false) }
+    // Freemium "Premium unlock" purchase -- see BillingManager's doc
+    // comment for why this can legitimately do nothing useful yet (the
+    // product doesn't exist in Play Console until account verification
+    // clears). Not rememberSaveable: re-querying Play on process restart
+    // is cheap and correct, unlike caching a stale answer across restarts.
+    var premiumPurchaseInProgress by remember { mutableStateOf(false) }
+    val premiumUnavailableMessage = stringResource(R.string.settings_premium_purchase_unavailable)
 
     // ── Phase 2: Google Drive backup/restore ─────────────────────────
     var backupInProgress by remember { mutableStateOf(false) }
@@ -435,6 +446,63 @@ fun SettingsScreen(
             }
 
             item {
+                // Persistent status, independent of any locked action --
+                // the Backup section below only explains itself once
+                // someone taps a disabled button; this is visible any time
+                // Settings is opened, before that.
+                val licenseState = preferences.toLicenseState()
+                SettingsSection(title = stringResource(R.string.settings_premium)) {
+                    Text(
+                        when {
+                            licenseState.premiumUnlocked -> stringResource(R.string.settings_premium_unlocked)
+                            licenseState.isTrialActive -> stringResource(
+                                R.string.settings_premium_trial_active,
+                                licenseState.trialDaysRemaining
+                            )
+                            else -> stringResource(R.string.settings_premium_trial_expired)
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (!licenseState.premiumUnlocked) {
+                        Button(
+                            onClick = {
+                                premiumPurchaseInProgress = true
+                                scope.launch {
+                                    val productDetails = billingManager.queryPremiumProductDetails()
+                                    premiumPurchaseInProgress = false
+                                    val activity = context as? Activity
+                                    if (productDetails != null && activity != null) {
+                                        billingManager.launchPurchaseFlow(activity, productDetails)
+                                    } else {
+                                        snackbarHostState.showSnackbar(premiumUnavailableMessage)
+                                    }
+                                }
+                            },
+                            enabled = !premiumPurchaseInProgress,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (premiumPurchaseInProgress) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.settings_premium_upgrade_button))
+                        }
+                    }
+                }
+            }
+
+            item {
+                // Freemium gating (see LicenseState): Backup is Premium-only
+                // from day one, never part of the OCR trial -- see the
+                // class doc for why. No purchase flow exists yet (Play
+                // Billing isn't integrated), so this can only ever show the
+                // locked state today; premiumUnlocked flips (and this
+                // section unlocks) once that lands.
+                val isBackupUnlocked = preferences.toLicenseState().isBackupUnlocked
                 SettingsSection(title = stringResource(R.string.settings_backup)) {
                     val lastBackupText = preferences.lastBackupAtMillis?.let {
                         DateFormat.getDateInstance().format(Date(it))
@@ -448,9 +516,16 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (!isBackupUnlocked) {
+                        Text(
+                            stringResource(R.string.settings_backup_premium_required),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     Button(
                         onClick = { startDriveAction(PendingDriveAction.BACKUP) },
-                        enabled = !backupInProgress && !restoreInProgress,
+                        enabled = isBackupUnlocked && !backupInProgress && !restoreInProgress,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (backupInProgress) {
@@ -467,7 +542,7 @@ fun SettingsScreen(
                     }
                     OutlinedButton(
                         onClick = { showRestoreConfirm = true },
-                        enabled = !backupInProgress && !restoreInProgress,
+                        enabled = isBackupUnlocked && !backupInProgress && !restoreInProgress,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         if (restoreInProgress) {

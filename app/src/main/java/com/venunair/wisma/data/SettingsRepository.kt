@@ -36,6 +36,8 @@ class SettingsRepository(private val context: Context) {
         val LAST_AUTO_DETECT_SCAN_AT = longPreferencesKey("last_auto_detect_scan_at_millis")
         val AUTO_DETECT_SUGGESTED_FINGERPRINTS = stringSetPreferencesKey("auto_detect_suggested_fingerprints")
         val PENDING_AUTO_DETECT_SUGGESTIONS = stringSetPreferencesKey("pending_auto_detect_suggestions")
+        val INSTALLED_AT = longPreferencesKey("installed_at_millis")
+        val PREMIUM_UNLOCKED = booleanPreferencesKey("premium_unlocked")
     }
 
     val preferences: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
@@ -62,6 +64,8 @@ class SettingsRepository(private val context: Context) {
                 ?.mapNotNull { PendingAutoDetectSuggestion.decode(it) }
                 ?.sortedByDescending { it.detectedAtMillis }
                 ?: emptyList(),
+            installedAtMillis = prefs[Keys.INSTALLED_AT] ?: 0L,
+            premiumUnlocked = prefs[Keys.PREMIUM_UNLOCKED] ?: false,
         )
     }
 
@@ -134,5 +138,24 @@ class SettingsRepository(private val context: Context) {
             val filtered = existing.filter { PendingAutoDetectSuggestion.decode(it)?.fingerprint != fingerprint }.toSet()
             prefs[Keys.PENDING_AUTO_DETECT_SUGGESTIONS] = filtered
         }
+    }
+
+    /** Stamps [Keys.INSTALLED_AT] with the current time, but only the
+     *  first time this ever runs for this install -- the trial clock (see
+     *  com.venunair.wisma.license.LicenseState) must never move once set.
+     *  Idempotent and safe to call unconditionally on every cold start;
+     *  called from WardenApplication.onCreate. */
+    suspend fun ensureInstalledAtStamped() {
+        context.dataStore.edit { prefs ->
+            if (prefs[Keys.INSTALLED_AT] == null) {
+                prefs[Keys.INSTALLED_AT] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /** Flipped by the Play Billing purchase-confirmation flow once the
+     *  one-time "Premium unlock" product is wired up -- no caller yet. */
+    suspend fun setPremiumUnlocked(unlocked: Boolean) {
+        context.dataStore.edit { it[Keys.PREMIUM_UNLOCKED] = unlocked }
     }
 }

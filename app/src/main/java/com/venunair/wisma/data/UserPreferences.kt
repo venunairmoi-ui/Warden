@@ -65,4 +65,17 @@ data class UserPreferences(
      *  subset of, timing-wise) autoDetectSuggestedFingerprints above: that
      *  set only ever grows, this list shrinks as items are reviewed. */
     val pendingAutoDetectSuggestions: List<PendingAutoDetectSuggestion> = emptyList(),
+    /** Epoch millis this install first ran, stamped once by
+     *  SettingsRepository.ensureInstalledAtStamped() and never overwritten
+     *  after that. 0L only ever means "not yet stamped" (a brand-new
+     *  process that hasn't completed its first DataStore write) -- see
+     *  com.venunair.wisma.license.LicenseState, which treats that the same
+     *  as "trial just started" rather than "trial expired". */
+    val installedAtMillis: Long = 0L,
+    /** Whether the one-time "Premium unlock" purchase has been made --
+     *  see com.venunair.wisma.license.LicenseState for what this and the
+     *  30-day trial each unlock. Not yet settable from any UI; will be
+     *  flipped by the Play Billing purchase-confirmation flow once that's
+     *  built. */
+    val premiumUnlocked: Boolean = false,
 )

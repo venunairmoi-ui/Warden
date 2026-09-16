@@ -113,6 +113,8 @@ import com.venunair.wisma.data.billingCycleLabel
 import com.venunair.wisma.data.billingSectionLabel
 import com.venunair.wisma.data.planTierLabel
 import com.venunair.wisma.data.subcategoriesFor
+import com.venunair.wisma.WardenApplication
+import com.venunair.wisma.license.currentLicenseState
 import com.venunair.wisma.ocr.parseReceiptFields
 import com.venunair.wisma.ocr.recognizeText
 import com.venunair.wisma.pdf.PdfDecryptor
@@ -149,6 +151,14 @@ private class AddEditViewModelFactory(
 // which is why this stays a bounded cap rather than "OCR every page" --
 // 5 is a deliberate, modest headroom increase, not "no limit".
 private const val MAX_OCR_PAGES = 5
+
+// Bug fix, 2026-09-16 (static audit finding): the Name field had no length
+// cap at all -- a pasted multi-paragraph name saved fine (SQLite has no
+// practical string limit) and then blew out HomeScreen's product-card and
+// ItemDetailScreen's HeroCard title, both of which render it at a
+// title/headline text style. 100 is generous for a real item name
+// ("Whirlpool Washing Machine AMC" is ~30) while still bounding worst case.
+private const val MAX_NAME_LENGTH = 100
 
 private data class PendingAttachment(
     val id: Long,
@@ -214,6 +224,7 @@ fun AddEditItemScreen(
     // pendingShareUri's LaunchedEffect) where stringResource() can't be
     // called directly.
     val ocrPrefillMessage = stringResource(R.string.ocr_prefill_toast)
+    val ocrLockedMessage = stringResource(R.string.ocr_locked_toast)
     val cameraPermissionError = stringResource(R.string.error_camera_permission)
     val sharedItemDefaultName = stringResource(R.string.shared_item_default_name)
 
@@ -326,6 +337,23 @@ fun AddEditItemScreen(
     val nameError = (nameTouched || attemptedSave) && name.isBlank()
     val expiryError = attemptedSave && expiryDate == null
 
+    // Bug fix, 2026-09-16 (static audit finding): Cost/Billing amount had
+    // no validation at all -- a negative number parsed fine as a Double
+    // and flowed straight into HomeViewModel's unguarded sums (moneyAtRisk,
+    // totalRecurringMonthly), silently corrupting both the headline totals
+    // and the per-category breakdown (which drops negative categories via
+    // filterValues { it > 0.0 } while the headline sum still counts them).
+    // Same isBlank-is-fine-but-touched-and-invalid-is-an-error shape as
+    // nameError above -- optional fields stay optional, only a genuinely
+    // invalid (unparseable or negative) non-blank entry blocks Save.
+    var costTouched by remember { mutableStateOf(false) }
+    var billingAmountTouched by remember { mutableStateOf(false) }
+    val costInvalid = costText.isNotBlank() && (costText.toDoubleOrNull()?.let { it < 0 } ?: true)
+    val billingAmountInvalid = billingAmountText.isNotBlank() &&
+        (billingAmountText.toDoubleOrNull()?.let { it < 0 } ?: true)
+    val costError = (costTouched || attemptedSave) && costInvalid
+    val billingAmountError = (billingAmountTouched || attemptedSave) && billingAmountInvalid
+
     // Retaxonomy, 2026-08-25: subcategory options depend on the chosen
     // category (subcategoriesFor). If the user switches category and the
     // current subCategory text isn't one of the new list (e.g. it was
@@ -397,9 +425,18 @@ fun AddEditItemScreen(
     // attachment goes through, without re-copying it or re-checking it for
     // a password it no longer has.
     suspend fun processLocalAttachment(localUri: Uri, mimeType: AttachmentMimeType, source: AttachmentSource) {
+            // Freemium gating (see LicenseState): once the 30-day OCR trial
+            // lapses and Premium isn't unlocked, attachments still save and
+            // still get a thumbnail -- they just stop auto-filling fields,
+            // same "best-effort" degradation as OCR finding no usable text.
+            val ocrUnlocked = (context.applicationContext as WardenApplication)
+                .settingsRepository.currentLicenseState().isOcrUnlocked
             val ocrBitmap: Bitmap? = when (mimeType) {
                 AttachmentMimeType.PDF -> runCatching { PdfPageRenderer.renderPage(context, localUri) }.getOrNull()
                 AttachmentMimeType.IMAGE -> decodeBitmapForOcr(context, localUri.toString())
+            }
+            if (!ocrUnlocked && ocrBitmap != null) {
+                scope.launch { snackbarHostState.showSnackbar(ocrLockedMessage) }
             }
 
             var thumbnailUri = if (mimeType == AttachmentMimeType.PDF && ocrBitmap != null) {
@@ -410,10 +447,12 @@ fun AddEditItemScreen(
             } else null
 
             val ocrTextParts = mutableListOf<String>()
-            ocrBitmap?.let { bitmap ->
-                runCatching { recognizeText(bitmap) }.getOrNull()?.text
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { ocrTextParts.add(it) }
+            if (ocrUnlocked) {
+                ocrBitmap?.let { bitmap ->
+                    runCatching { recognizeText(bitmap) }.getOrNull()?.text
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { ocrTextParts.add(it) }
+                }
             }
             ocrBitmap?.recycle()
 
@@ -428,9 +467,11 @@ fun AddEditItemScreen(
                             thumbnailUri = AttachmentStorage.uriForFile(context, thumbFile).toString()
                         }
                     }
-                    runCatching { recognizeText(pageBitmap) }.getOrNull()?.text
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { ocrTextParts.add(it) }
+                    if (ocrUnlocked) {
+                        runCatching { recognizeText(pageBitmap) }.getOrNull()?.text
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { ocrTextParts.add(it) }
+                    }
                     pageBitmap.recycle()
                 }
             }
@@ -787,7 +828,13 @@ fun AddEditItemScreen(
             FormSectionCard(title = stringResource(R.string.section_item_information)) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    // Bug fix, 2026-09-16 (static audit finding): no cap
+                    // existed at all -- see HomeScreen's product-card Text
+                    // and ItemDetailScreen's HeroCard title, both of which
+                    // needed a display-side maxLines/ellipsis fix for
+                    // exactly this. This is the input-side half of that fix
+                    // so the underlying data itself can't grow unbounded.
+                    onValueChange = { name = it.take(MAX_NAME_LENGTH) },
                     label = { Text(stringResource(R.string.field_name)) },
                     isError = nameError,
                     supportingText = if (nameError) {
@@ -937,7 +984,14 @@ fun AddEditItemScreen(
                     value = costText,
                     onValueChange = { costText = it },
                     label = { Text(stringResource(R.string.label_optional_suffix, category.costLabel())) },
-                    modifier = Modifier.fillMaxWidth()
+                    isError = costError,
+                    supportingText = if (costError) {
+                        { Text(stringResource(R.string.error_invalid_amount)) }
+                    } else null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { if (!it.isFocused) costTouched = true }
                 )
                 OutlinedTextField(
                     value = amcNumber,
@@ -1128,7 +1182,14 @@ fun AddEditItemScreen(
                         value = billingAmountText,
                         onValueChange = { billingAmountText = it },
                         label = { Text(category.billingAmountLabel()) },
-                        modifier = Modifier.fillMaxWidth()
+                        isError = billingAmountError,
+                        supportingText = if (billingAmountError) {
+                            { Text(stringResource(R.string.error_invalid_amount)) }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { if (!it.isFocused) billingAmountTouched = true }
                     )
 
                     // Subscription: plan name. Membership: tier name. Same
@@ -1253,6 +1314,8 @@ fun AddEditItemScreen(
                     when {
                         name.isBlank() -> Unit
                         expiryDate == null -> Unit
+                        costInvalid -> Unit
+                        billingAmountInvalid -> Unit
                         else -> {
                             error = null
                             viewModel.save(

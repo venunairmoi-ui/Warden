@@ -579,6 +579,96 @@ android {
         versionCode = 54
         versionName = "0.15.14-tablet-adaptive-layout"
 
+        // 0.16.0-billing-scaffold: 2026-09-16 -- freemium licensing model
+        // (see project memory "warden-android-playstore-licensing"): OCR
+        // free for a 30-day trial then Premium-gated, Backup Premium-only
+        // from day one. This entry adds the actual Play Billing purchase
+        // plumbing for the one-time "Premium unlock" non-consumable
+        // product: new billing/BillingManager.kt (BillingClient v9.1.0,
+        // wraps connection/query/purchase/acknowledge/restore behind a
+        // small suspend-friendly API), wired up in WardenApplication
+        // (process-lifetime instance, startConnection() called from
+        // onCreate like every other manual-DI singleton there) and
+        // threaded through WardenNavHost into SettingsScreen's Premium
+        // section, which now shows an "Upgrade to Premium" button when
+        // premiumUnlocked is false.
+        // NOT LIVE YET: the product id BillingManager.PREMIUM_UNLOCK_
+        // PRODUCT_ID ("premium_unlock") doesn't exist in Play Console --
+        // account is still under identity verification, and an in-app
+        // product can't be created before that clears. Until then,
+        // tapping Upgrade queries Play, gets an empty product list back
+        // (not an error), and shows "Premium isn't available yet" rather
+        // than crashing or hanging. Once the real product is created with
+        // this exact id, this should work end-to-end with no code
+        // changes. NOT verified on-device at all (no device available in
+        // this environment) -- the whole purchase flow, including the
+        // Play-side UI it launches, needs a real test once the product
+        // exists.
+        versionCode = 55
+        versionName = "0.16.0-billing-scaffold"
+
+        // 0.16.1-expired-label-fix: 2026-09-16 -- reported from a Play
+        // Store screenshot review: the "Expired" quick-filter screen (from
+        // Overview's EXPIRED tile) showed its item under a section header
+        // reading "Expiring soon". Root cause: HomeViewModel.QuickFilter.
+        // EXPIRED carried its filtered results through GroupedItems.
+        // expiringSoon -- the same field QuickFilter.DUE_SOON reuses --
+        // purely to piggyback on HomeScreen's existing rendering path, and
+        // HomeScreen hardcodes that field's header to "Expiring soon"
+        // regardless of which quick filter actually populated it. New
+        // dedicated GroupedItems.expired field + its own "Expired" section
+        // header in HomeScreen, tinted with the same ItemUrgency.OVERDUE
+        // color the item's own accent bar/status pill already uses (not
+        // colorScheme.error). HomeViewModel.selectAllVisible's "select all"
+        // union updated to include the new field too, so bulk-select still
+        // works when viewing the Expired quick filter. The main unfiltered
+        // "My Products" list's own "Expiring soon" bucket (which
+        // deliberately mixes overdue + due-soon items, per groupByUrgency's
+        // own comment) is untouched -- this fix is scoped to the quick-
+        // filter screens only. NOT verified on-device (no device available
+        // in this environment).
+        versionCode = 56
+        versionName = "0.16.1-expired-label-fix"
+
+        // 0.16.2-audit-fixes: 2026-09-16 -- three fixes from a static code
+        // audit run ahead of Play Store submission (no device available in
+        // this environment, so this was a code read, not a live test run):
+        // (1) Cost/Billing amount fields had zero validation -- a negative
+        //     number parsed fine as a Double and flowed unguarded into
+        //     HomeViewModel's moneyAtRisk/totalRecurringMonthly sums,
+        //     silently corrupting both the headline totals and the
+        //     per-category breakdown (which drops negative categories via
+        //     filterValues { it > 0.0 } while the headline sum still counts
+        //     them). Both fields now validate (KeyboardType.Decimal, an
+        //     inline error matching the existing Name-field pattern,
+        //     invalid non-blank input blocks Save) -- blank still means
+        //     "no cost given", only a genuinely invalid or negative
+        //     non-blank entry is rejected.
+        // (2) Item name had no length cap anywhere, and neither HomeScreen's
+        //     product-card Text nor ItemDetailScreen's HeroCard title had
+        //     maxLines/overflow -- a long pasted name wrapped across many
+        //     lines and blew out card height. Added a 100-char cap on the
+        //     Name field itself plus maxLines+ellipsis on both display
+        //     sites.
+        // (3) android:allowBackup="true" had no fullBackupContent/
+        //     dataExtractionRules, so Android's OS-level Auto Backup could
+        //     silently include the Room database and every attachment in
+        //     the user's standard Android cloud backup regardless of
+        //     whether they ever turned on Wisma's own in-app Drive backup
+        //     toggle -- contradicting the published privacy policy's
+        //     "stays on this device unless you turn on backup yourself"
+        //     claim as actually shipped. New backup_rules.xml (pre-API-31)
+        //     + data_extraction_rules.xml (API 31+) exclude exactly what
+        //     DriveBackupManager's own backup already covers under the
+        //     user's explicit control: warden.db, attachments/, and the
+        //     DataStore settings file.
+        // Verified: full signed compileDebugKotlin + assembleDebug succeed
+        // (including a resource-compile round-trip on the two new XML
+        // files, which caught an invalid "--" inside an XML comment before
+        // this landed). NOT verified on-device.
+        versionCode = 57
+        versionName = "0.16.2-audit-fixes"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -779,4 +869,11 @@ dependencies {
     // cannot open (android.graphics.pdf.PdfRenderer has no password
     // parameter before API 35, and minSdk here is 26).
     implementation(libs.pdfbox.android)
+
+    // Freemium "Premium unlock" one-time purchase scaffolding -- see
+    // billing/BillingManager.kt. The in-app product itself doesn't exist
+    // in Play Console yet (account still under identity verification), so
+    // this compiles and runs today but has nothing real to sell until
+    // that product is created.
+    implementation(libs.billing)
 }

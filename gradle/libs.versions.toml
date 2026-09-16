@@ -26,6 +26,7 @@ googleApiServicesDrive = "v3-rev20260428-2.0.0"
 googleHttpClientGson = "1.47.0"
 material3Adaptive = "1.2.0"
 pdfboxAndroid = "2.0.27.0"
+billing = "9.1.0"
 
 [libraries]
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -86,6 +87,23 @@ adaptive-navigation = { group = "androidx.compose.material3.adaptive", name = "a
 # count, rendering, thumbnails) still goes through the native renderer on
 # that decrypted copy, unchanged.
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
+
+# Freemium "Premium unlock" one-time purchase -- see BillingManager.kt.
+# Plain "billing" artifact, NOT "billing-ktx": tried billing-ktx 9.1.0
+# first, but it's compiled against Kotlin 2.3.0 metadata, newer than this
+# project's pinned kotlin=2.1.0 (compileDebugKotlin failed: "Module was
+# compiled with an incompatible version of Kotlin... expected version is
+# 2.1.0") -- an older compiler can't read newer module metadata. The core
+# "billing" artifact doesn't carry that Kotlin-version coupling, and
+# BillingManager doesn't use any KTX-only suspend extension anyway (it
+# wraps the callback API in suspendCancellableCoroutine itself, same
+# pattern as ocr/AttachmentOcr.kt's recognizeText). 9.1.0 confirmed as
+# Google Maven's actual latest release (dl.google.com's
+# maven-metadata.xml), not just an index mirror's guess -- same verify-
+# against-the-real-source discipline as this project's other Google-
+# library integrations (see DriveBackupManager's Authorization API doc
+# comment for why that discipline exists here).
+billing = { group = "com.android.billingclient", name = "billing", version.ref = "billing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

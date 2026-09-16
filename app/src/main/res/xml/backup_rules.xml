@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Pre-Android-12 (below API 31) equivalent of data_extraction_rules.xml;
+    see that file's doc comment for the full rationale. android:
+    fullBackupContent is what Android's OS-level Auto Backup actually reads
+    on API 23-30; dataExtractionRules only applies on API 31+. Both are
+    wired up in AndroidManifest.xml so the exclusion holds on every
+    supported API level (minSdk 26).
+-->
+<full-backup-content>
+    <exclude domain="database" path="warden.db" />
+    <exclude domain="file" path="attachments/" />
+    <exclude domain="file" path="datastore/warden_settings.preferences_pb" />
+</full-backup-content>

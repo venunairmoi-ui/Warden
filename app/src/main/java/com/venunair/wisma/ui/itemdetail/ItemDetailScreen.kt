@@ -106,8 +106,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.venunair.wisma.capture.AttachmentStorage
@@ -125,6 +127,9 @@ import com.venunair.wisma.data.billingAmountLabel
 import com.venunair.wisma.data.billingCycleLabel
 import com.venunair.wisma.data.planTierLabel
 import com.venunair.wisma.data.referenceNumberLabel
+import com.venunair.wisma.R
+import com.venunair.wisma.WardenApplication
+import com.venunair.wisma.license.currentLicenseState
 import com.venunair.wisma.ocr.recognizeText
 import com.venunair.wisma.pdf.PdfPageRenderer
 import com.venunair.wisma.ui.attachment.AttachmentThumbnailRow
@@ -219,6 +224,7 @@ fun ItemDetailScreen(
             ItemDetailContent(
                 item = current,
                 repository = repository,
+                snackbarHostState = snackbarHostState,
                 modifier = Modifier.padding(padding)
             )
         } ?: ShimmerLoading(modifier = Modifier.padding(padding))
@@ -276,8 +282,18 @@ fun ItemDetailScreen(
 }
 
 @Composable
-private fun ItemDetailContent(item: Item, repository: ItemRepository, modifier: Modifier = Modifier) {
+private fun ItemDetailContent(
+    item: Item,
+    repository: ItemRepository,
+    snackbarHostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
     val scope = rememberCoroutineScope()
+    // Resolved here (composable scope) rather than inside handleReceiptCapture
+    // below -- that's a suspend function, not a @Composable one, so
+    // stringResource() can't be called from it directly. Same pattern as
+    // AddEditItemScreen's ocrLockedMessage.
+    val ocrLockedMessage = stringResource(R.string.ocr_locked_toast)
     var showMarkServicedConfirm by remember { mutableStateOf(false) }
     // Feedback, 2026-08-25: the confirm dialog used to hardcode BOTH dates
     // (service date = today, next due = +1yr from current expiry) with no
@@ -319,8 +335,21 @@ private fun ItemDetailContent(item: Item, repository: ItemRepository, modifier: 
                     AttachmentStorage.uriForFile(context, thumbFile).toString()
                 } else null
             } else null
-            val rawOcrText = ocrBitmap?.let { bitmap ->
-                runCatching { recognizeText(bitmap) }.getOrNull()?.text?.takeIf { it.isNotBlank() }
+            // Freemium gating (see LicenseState): once the 30-day OCR trial
+            // lapses and Premium isn't unlocked, the receipt still attaches
+            // -- it just stops auto-filling fields, same "best-effort"
+            // degradation as OCR finding no usable text.
+            val ocrUnlocked = (context.applicationContext as WardenApplication)
+                .settingsRepository.currentLicenseState().isOcrUnlocked
+            if (!ocrUnlocked && ocrBitmap != null) {
+                scope.launch { snackbarHostState.showSnackbar(ocrLockedMessage) }
+            }
+            val rawOcrText = if (ocrUnlocked) {
+                ocrBitmap?.let { bitmap ->
+                    runCatching { recognizeText(bitmap) }.getOrNull()?.text?.takeIf { it.isNotBlank() }
+                }
+            } else {
+                null
             }
             ocrBitmap?.recycle()
             // One receipt slot, not a list -- replacing a previous capture
@@ -1012,7 +1041,13 @@ private fun HeroCard(item: Item) {
                     item.name,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    // Bug fix, 2026-09-16 (static audit finding): same
+                    // unbounded-name issue as HomeScreen's product card --
+                    // no cap here let a very long pasted name blow out this
+                    // hero card's height.
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
                 item.vendor?.let { vendor ->
                     Spacer(Modifier.height(4.dp))

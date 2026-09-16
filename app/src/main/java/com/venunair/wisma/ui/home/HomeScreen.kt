@@ -466,6 +466,51 @@ fun HomeScreen(
                         }
                     }
 
+                    // ── Expired ──────────────────────────────────
+                    // Bug fix, 2026-09-16: previously rendered via the
+                    // `expiringSoon` block above (QuickFilter.EXPIRED used
+                    // to populate that same field) -- an overdue item
+                    // showed up under a header that said "Expiring soon".
+                    // Its own field/header now says what it actually is,
+                    // using the same dedicated overdue color the accent
+                    // bar/status pill on the item itself already uses
+                    // (see ItemUrgency.OVERDUE.color()), not colorScheme.error.
+                    if (grouped.expired.isNotEmpty()) {
+                        item(key = "header_expired") {
+                            SectionHeader(
+                                icon = Icons.Filled.Warning,
+                                title = stringResource(R.string.expired_label),
+                                count = grouped.expired.size,
+                                tintColor = ItemUrgency.OVERDUE.color()
+                            )
+                        }
+                        itemsIndexed(
+                            grouped.expired,
+                            key = { _, item -> item.id }
+                        ) { index, item ->
+                            SwipeableItemRow(
+                                item = item,
+                                index = index,
+                                skipAnimation = item.id in restoredItemIds,
+                                onClick = {
+                                    restoredItemIds.remove(item.id)
+                                    onOpenItem(item.id)
+                                },
+                                onArchive = {
+                                    viewModel.archiveItem(item.id)
+                                    archivedItemId = item.id
+                                    archivedItemName = item.name
+                                    archiveSeq++
+                                },
+                                onEdit = { onEditItem(item.id) },
+                                selectionMode = selectionMode,
+                                selected = item.id in selectedIds,
+                                onToggleSelect = { viewModel.toggleSelection(item.id) },
+                                onLongClick = { viewModel.startSelection(item.id) }
+                            )
+                        }
+                    }
+
                     // ── Empty filter result ──────────────────────
                     if (grouped.isEmpty && (selectedCategories.isNotEmpty() || selectedLocation != null || quickFilter != null)) {
                         item(key = "no_results") {
@@ -1083,7 +1128,20 @@ private fun ProductCardContent(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Text(item.name, style = MaterialTheme.typography.titleMedium)
+                        // Bug fix, 2026-09-16 (static audit finding): no
+                        // maxLines/overflow here, and no length cap on the
+                        // Name field itself (AddEditItemScreen only checks
+                        // isBlank) -- a long pasted name wrapped across many
+                        // lines and blew out this card's height, breaking
+                        // the list's rhythm. Truncated here; see
+                        // AddEditItemScreen's Name field for the matching
+                        // input-side length cap.
+                        Text(
+                            item.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         item.vendor?.let {
                             Text(
                                 it,

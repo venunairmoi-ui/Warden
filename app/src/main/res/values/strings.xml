@@ -42,8 +42,10 @@
     <string name="save_button">Save</string>
     <string name="error_name_required">Name is required.</string>
     <string name="error_expiry_required">Pick an expiry / next due date.</string>
+    <string name="error_invalid_amount">Enter a valid amount, 0 or more.</string>
     <string name="error_camera_permission">Camera permission is needed to take a photo.</string>
     <string name="ocr_prefill_toast">Some fields were filled in from the scan — please check them</string>
+    <string name="ocr_locked_toast">Your 30-day auto-fill trial has ended — upgrade to Premium to keep scanning receipts automatically</string>
     <string name="add_item_subtitle">Track a new item</string>
     <string name="edit_item_subtitle">Update the details</string>
     <string name="save_changes_button">Save changes</string>
@@ -201,6 +203,13 @@
     <string name="settings_backup_last">Last backup: %1$s</string>
     <string name="settings_backup_never">Never</string>
     <string name="settings_backup_body">Back up everything to your own Google Drive — private to your account, invisible to other apps, and never seen by Wisma\'s developer.</string>
+    <string name="settings_backup_premium_required">Backup is a Premium feature. Upgrade to enable it.</string>
+    <string name="settings_premium">Premium</string>
+    <string name="settings_premium_trial_active">Free trial — %1$d day(s) left. OCR auto-fill is included; Backup requires Premium.</string>
+    <string name="settings_premium_trial_expired">Your 30-day trial has ended. OCR auto-fill and Backup are now Premium features.</string>
+    <string name="settings_premium_unlocked">Premium unlocked — OCR auto-fill and Backup are both available.</string>
+    <string name="settings_premium_upgrade_button">Upgrade to Premium</string>
+    <string name="settings_premium_purchase_unavailable">Premium isn\'t available for purchase yet — check back soon</string>
     <string name="backup_now_button">Back up now</string>
     <string name="backup_in_progress">Backing up…</string>
     <string name="restore_button">Restore from backup</string>

@@ -20,6 +20,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.venunair.wisma.capture.CameraCaptureScreen
 import com.venunair.wisma.data.ItemRepository
+import com.venunair.wisma.billing.BillingManager
 import com.venunair.wisma.data.SettingsRepository
 import com.venunair.wisma.data.UserPreferences
 import com.venunair.wisma.ui.additem.AddEditItemScreen
@@ -120,6 +121,7 @@ private const val NAV_ANIM_DURATION = 300
 fun WardenNavHost(
     repository: ItemRepository,
     settingsRepository: SettingsRepository,
+    billingManager: BillingManager,
     // (itemId, nonce) from a notification tap — see MainActivity for why a
     // bare itemId alone can't reliably re-trigger navigation on a repeat tap.
     deepLinkTarget: Pair<Long, Int>? = null,
@@ -309,6 +311,7 @@ fun WardenNavHost(
         composable(WardenDestination.Settings.route) {
             SettingsScreen(
                 repository = settingsRepository,
+                billingManager = billingManager,
                 onBack = { navController.popBackStack() },
                 onOpenArchivedItems = { navController.navigate(WardenDestination.ArchivedItems.route) },
                 onOpenPrivacy = { navController.navigate(WardenDestination.Privacy.route) }

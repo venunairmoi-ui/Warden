@@ -11,6 +11,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.venunair.wisma.WardenApplication
 import com.venunair.wisma.data.PendingAutoDetectSuggestion
+import com.venunair.wisma.license.currentLicenseState
 import com.venunair.wisma.ocr.recognizeText
 import com.venunair.wisma.reminders.NotificationHelper
 import com.venunair.wisma.ui.common.decodeBitmapForOcr
@@ -76,6 +77,27 @@ class AutoDetectWorker(
         }
 
         val settingsRepository = (applicationContext as WardenApplication).settingsRepository
+
+        // Freemium gating: this whole worker exists to run OCR over the
+        // gallery, so a locked trial (see LicenseState) means there's
+        // nothing useful left to do this run -- skip the scan entirely
+        // rather than gating the per-candidate recognizeText call below.
+        // Reported the same shape as the hasMediaAccess-false branch above
+        // since from the caller's (OverviewScreen debug button's)
+        // perspective it's the same "nothing was examined" outcome.
+        if (!settingsRepository.currentLicenseState().isOcrUnlocked) {
+            return Result.success(
+                workDataOf(
+                    KEY_MEDIA_PERMISSION_GRANTED to true,
+                    KEY_NOTIFICATION_PERMISSION_GRANTED to hasNotificationPermission,
+                    KEY_CANDIDATES_EXAMINED to 0,
+                    KEY_HEURISTIC_MATCHES to 0,
+                    KEY_DUPLICATES_SKIPPED to 0,
+                    KEY_NOTIFICATIONS_POSTED to 0
+                )
+            )
+        }
+
         // Single snapshot read, not a live collector — a worker run is a
         // one-shot unit of work, not something that should react to a
         // setting changing mid-run.

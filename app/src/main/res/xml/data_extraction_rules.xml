@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Bug fix, 2026-09-16 (static audit finding): android:allowBackup="true"
+    on the manifest's application tag had no matching rules at all, which
+    means Android's own OS-level Auto Backup (a completely separate
+    mechanism from this app's own Google Drive backup feature in
+    backup/DriveBackupManager.kt) could silently include the Room database
+    and every photo/PDF attachment in the user's standard Android cloud
+    backup, regardless of whether the user ever turns on Wisma's in-app
+    backup toggle. That directly contradicts the privacy policy's "stored
+    only on this device, unless you turn on Google Drive backup yourself"
+    claim (see the published privacy policy section 2, and
+    PrivacyScreen.kt's matching in-app copy) as actually shipped.
+
+    This file (Android 12+, TIRAMISU and up) covers both cloud backup and
+    device-to-device transfer. See backup_rules.xml alongside it for the
+    pre-12 equivalent; both are required for full coverage, per Android's
+    own guidance, since dataExtractionRules doesn't apply below API 31.
+
+    Excludes exactly what DriveBackupManager.kt's own backup already
+    covers under the user's explicit control: the Room database (warden.db,
+    see WardenDatabase.kt) and the attachments directory (AttachmentStorage.
+    DIR_NAME). DataStore's settings file (SettingsRepository.kt's
+    "warden_settings") is excluded too; it's not sensitive on its own, but
+    has no reason to leave the device outside the backup flow the user
+    actually chose. Nothing else is excluded: there is no other app data
+    to speak of.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="warden.db" />
+        <exclude domain="file" path="attachments/" />
+        <exclude domain="file" path="datastore/warden_settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="warden.db" />
+        <exclude domain="file" path="attachments/" />
+        <exclude domain="file" path="datastore/warden_settings.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

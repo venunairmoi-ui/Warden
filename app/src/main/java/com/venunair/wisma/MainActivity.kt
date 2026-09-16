@@ -126,6 +126,7 @@ class MainActivity : ComponentActivity() {
                 WardenNavHost(
                     repository = repository,
                     settingsRepository = app.settingsRepository,
+                    billingManager = app.billingManager,
                     deepLinkTarget = currentDeepLink,
                     pendingShare = currentPendingShare,
                     startAtOnboarding = currentOnboardingCompleted == false

@@ -168,7 +168,7 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
 
     fun selectAllVisible() {
         _selectedIds.value = groupedItems.value.let { g ->
-            (g.expiringSoon + g.renewalApproaching + g.active).map { it.id }.toSet()
+            (g.expiringSoon + g.renewalApproaching + g.active + g.expired).map { it.id }.toSet()
         }
     }
 
@@ -248,7 +248,7 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
                     .sortedBy { it.expiryDate }
             )
             QuickFilter.EXPIRED -> GroupedItems(
-                expiringSoon = categoryLocationFiltered
+                expired = categoryLocationFiltered
                     .filter { it.expiryDate.isBefore(today) }
                     .sortedBy { it.expiryDate }
             )
@@ -266,10 +266,20 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
 data class GroupedItems(
     val expiringSoon: List<Item> = emptyList(),
     val renewalApproaching: List<Item> = emptyList(),
-    val active: List<Item> = emptyList()
+    val active: List<Item> = emptyList(),
+    // Bug fix, 2026-09-16: QuickFilter.EXPIRED used to carry its results
+    // through the `expiringSoon` field (same field DUE_SOON reuses) purely
+    // to piggyback on HomeScreen's existing rendering path -- fine for
+    // DUE_SOON, since its items really are "expiring soon", but wrong for
+    // EXPIRED, whose items are already past due. HomeScreen hardcodes that
+    // field's section header to "Expiring soon" regardless of which quick
+    // filter populated it, so an overdue item showed up under a section
+    // header claiming it was merely expiring soon. Its own dedicated field
+    // gets its own dedicated "Expired" header instead.
+    val expired: List<Item> = emptyList()
 ) {
-    val isEmpty get() = expiringSoon.isEmpty() && renewalApproaching.isEmpty() && active.isEmpty()
-    val totalCount get() = expiringSoon.size + renewalApproaching.size + active.size
+    val isEmpty get() = expiringSoon.isEmpty() && renewalApproaching.isEmpty() && active.isEmpty() && expired.isEmpty()
+    val totalCount get() = expiringSoon.size + renewalApproaching.size + active.size + expired.size
 }
 
 data class HomeSummary(
