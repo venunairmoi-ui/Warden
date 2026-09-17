@@ -312,6 +312,7 @@ data class HomeSummary(
 
 private fun groupByUrgency(items: List<Item>): GroupedItems {
     val today = LocalDate.now()
+    val expired = mutableListOf<Item>()
     val expiringSoon = mutableListOf<Item>()
     val renewalApproaching = mutableListOf<Item>()
     val active = mutableListOf<Item>()
@@ -326,7 +327,22 @@ private fun groupByUrgency(items: List<Item>): GroupedItems {
             item.isRecurringPayment && item.autoRenew && daysLeft in 0..30 -> {
                 renewalApproaching.add(item)
             }
-            // Expired or expiring within 30 days
+            // Bug fix, 2026-09-16, found via real on-device QA testing: this
+            // used to fold an already-expired item (daysLeft < 0) into the
+            // SAME expiringSoon bucket as genuinely due-soon items -- "Expired
+            // or expiring within 30 days" per the comment this replaces. That
+            // was fine back when HomeScreen rendered expiringSoon under one
+            // "Expiring soon" header regardless -- but it's the exact same
+            // mislabeling bug already fixed for QuickFilter.EXPIRED (an
+            // expired item shown under a header claiming it's merely
+            // expiring soon), just reachable from the default My Products
+            // list (and the AT_RISK/SUBSCRIPTIONS quick filters, which also
+            // call this function) instead. Split out negative daysLeft into
+            // its own bucket so it renders under HomeScreen's dedicated
+            // "Expired" section instead.
+            daysLeft < 0 -> {
+                expired.add(item)
+            }
             daysLeft <= 30 -> {
                 expiringSoon.add(item)
             }
@@ -337,6 +353,7 @@ private fun groupByUrgency(items: List<Item>): GroupedItems {
     }
 
     return GroupedItems(
+        expired = expired.sortedBy { it.expiryDate },
         expiringSoon = expiringSoon.sortedBy { it.expiryDate },
         renewalApproaching = renewalApproaching.sortedBy { it.expiryDate },
         active = active.sortedBy { it.expiryDate }

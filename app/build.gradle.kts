@@ -703,6 +703,62 @@ android {
         versionCode = 58
         versionName = "0.16.3-premature-validation-fix"
 
+        // 0.16.4-qa-agent-fixes: 2026-09-16 -- two bugs found by a
+        // dispatched QA subagent running a real, live E2E pass on the
+        // physical device (comprehensive technical test, orchestrated
+        // after the earlier fixes above):
+        // (1) Overview's "Monthly recurring costs" card clipped real,
+        //     valid text -- e.g. "$5,273.92/mo" cut to "$5,273.92/..."
+        //     at the value's old hardcoded maxLines=1, and a realistic
+        //     4-category breakdown cut to "...· S..." at the old
+        //     subtitleMaxLines=2. Confirmed via UI dump (full text existed
+        //     in the accessibility tree) vs. the visibly ellipsized
+        //     screenshot. First fix attempt (raise subtitleMaxLines to 4)
+        //     was caught and reverted before shipping -- confirmed live
+        //     on-device that it violated OverviewScreen's own "fits the
+        //     screen without a scroll" design, producing a taller card
+        //     that rendered underneath the floating Add button with no
+        //     way to reach the hidden text. Real fix has three parts:
+        //     MoneySplitHalf's value line gained its own configurable
+        //     valueMaxLines (2, for this card only -- a currency string
+        //     is short and bounded, safe to grow); recurringBreakdownText
+        //     now bounds the DATA shown (top 2 categories by amount plus
+        //     a short "+N more" suffix) instead of hoping an unbounded
+        //     joined string fits a fixed line count; and, since even that
+        //     doesn't fully guarantee every real device/data-size
+        //     combination fits above the FAB, OverviewScreen's whole
+        //     Column is now wrapped in verticalScroll -- the only
+        //     guarantee that actually holds, replacing the disproven
+        //     "structurally fits, no scroll needed" claim.
+        // (2) The "Expired" quick-filter header fix from 0.16.1 turned out
+        //     incomplete: it only fixed the QuickFilter.EXPIRED branch
+        //     (Overview's EXPIRED tile) -- the general My Products list
+        //     (no filter) and the AT_RISK/SUBSCRIPTIONS quick filters all
+        //     go through groupByUrgency(), which still lumped an
+        //     already-expired item into the SAME expiringSoon bucket as
+        //     genuinely due-soon items ("Expired or expiring within 30
+        //     days", per the comment this replaces) -- the exact same
+        //     mislabeling bug, just reachable from a different screen.
+        //     groupByUrgency now splits negative-daysLeft items into their
+        //     own expired bucket too, same as QuickFilter.EXPIRED already
+        //     did. Required a matching fix in OverviewScreen.kt's own
+        //     tile-counting (`allItems = grouped.expiringSoon + ... `)
+        //     to add `+ grouped.expired`, since that line would otherwise
+        //     have silently lost every expired item from the sum the
+        //     moment groupByUrgency stopped putting them in expiringSoon --
+        //     caught by re-reading that consumer before shipping, not by
+        //     a test run.
+        // Verified: full compileDebugKotlin + assembleDebug succeed (one
+        // self-inflicted mistake caught by the same build: an edit
+        // accidentally dropped the `subtitle = recurringBreakdownText(...)`
+        // argument entirely, caught immediately by a real compile error
+        // rather than shipped). Both the bounded-breakdown text and the
+        // scroll-clears-the-FAB behavior were confirmed live on-device
+        // (Oppo/OnePlus CPH2573) by actually scrolling the card and
+        // reading the result, not just by reasoning about the code.
+        versionCode = 59
+        versionName = "0.16.4-qa-agent-fixes"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

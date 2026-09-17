@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Autorenew
@@ -170,9 +172,16 @@ private class OverviewViewModelFactory(private val repository: ItemRepository) :
  * per-destination scoping) -- both instances read the same Room-backed
  * repository, so they can never disagree.
  *
- * Layout is a plain Column, deliberately NOT wrapped in verticalScroll --
- * "fits the screen without a scroll" is enforced structurally rather than
- * by hand-tuning paddings to a guess at one device's height.
+ * Bug fix, 2026-09-16, found via real on-device QA testing: this used to
+ * say the layout was a plain Column deliberately NOT wrapped in
+ * verticalScroll, with "fits the screen without a scroll" enforced
+ * structurally. That didn't hold on a real device with realistic seeded
+ * data -- the last card's content rendered underneath the floating Add
+ * button, which the content padding never accounted for. Now wrapped in
+ * verticalScroll (see the Column's own comment below) -- the only
+ * guarantee that actually holds across every real device height and
+ * data size, rather than a fixed layout tuned to whichever screen it was
+ * last looked at on.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +219,12 @@ fun OverviewScreen(
     // for the same fix, so a due-today item classifies the same way here,
     // in the drill-down list it opens, and on the item's own accent bar.
     val today = java.time.LocalDate.now()
-    val allItems = grouped.expiringSoon + grouped.renewalApproaching + grouped.active
+    // Bug fix, 2026-09-16: grouped.expired must be included here now that
+    // groupByUrgency actually populates it (see that function's own doc
+    // comment) -- otherwise this line's own expiredCount below would
+    // always read 0, since no expired item would appear in this sum at
+    // all anymore.
+    val allItems = grouped.expiringSoon + grouped.renewalApproaching + grouped.active + grouped.expired
     val expiredCount = allItems.count { it.expiryDate.isBefore(today) }
     val dueSoonCount = allItems.count { ChronoUnit.DAYS.between(today, it.expiryDate) in 0..30 }
     val activeCount = allItems.count { ChronoUnit.DAYS.between(today, it.expiryDate) > 30 }
@@ -375,7 +389,30 @@ fun OverviewScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(16.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                // Bug fix, 2026-09-16, found via real on-device QA testing:
+                // this Column's own doc comment used to claim "fits the
+                // screen without a scroll, enforced structurally" -- false
+                // in practice. Scaffold's floatingActionButton floats over
+                // the content area independent of the `padding` this
+                // Column already applies (that padding only accounts for
+                // the top bar), so nothing here was ever actually
+                // reserving room for it. Confirmed live: with realistic
+                // seeded data (11 items -- 3 stat tiles + the total header
+                // + the money-split row), the last card's bottom portion
+                // rendered directly underneath the Add button, and since
+                // this Column had no scroll, that content had nowhere to
+                // go if the phone's screen weren't tall enough -- silently
+                // inaccessible, not just visually crowded. verticalScroll
+                // is the only guarantee that holds across every real
+                // device height and every realistic amount of data,
+                // rather than a fixed layout that happens to fit on
+                // whichever screen it was last actually looked at on.
+                // Extra bottom space so the last card can scroll clear of
+                // the floating Add button instead of stopping flush
+                // against it.
+                .padding(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OverviewTotalHeader(
@@ -559,7 +596,27 @@ private fun MoneySplitCard(
                 // identical. The "/mo" suffix here and in the breakdown
                 // below makes that normalisation visible instead of implicit.
                 value = "${summary.totalRecurringMonthly.toCurrencyString()}/mo",
+                // Bug fix, 2026-09-16, found via real on-device QA testing:
+                // the value was clipping real, valid text -- e.g.
+                // "$5,273.92/mo" cut to "$5,273.92/..." at the old
+                // hardcoded maxLines=1. A currency string plus "/mo" is
+                // short and bounded (never more than 2 lines even in a
+                // half-width card at this font size), so 2 lines here is
+                // safe headroom, unlike the breakdown below.
+                //
+                // First attempt at this same bug also raised
+                // subtitleMaxLines (to 4, to stop a realistic 4-category
+                // breakdown from ellipsizing) -- caught before shipping
+                // that it violates this screen's own deliberate "fits the
+                // screen without a scroll, enforced structurally" design
+                // (see this file's OverviewScreen doc comment): confirmed
+                // live on-device that a taller card collided with the
+                // floating Add button, with no scroll to reach the hidden
+                // text. Reverted subtitleMaxLines to its original 2 --
+                // see recurringBreakdownText below for the real fix,
+                // which bounds the DATA shown instead of the line count.
                 subtitle = recurringBreakdownText(summary),
+                valueMaxLines = 2,
                 subtitleMaxLines = 2,
                 tint = MaterialTheme.colorScheme.primary,
                 onClick = onSubscriptionsClick,
@@ -584,6 +641,24 @@ private fun MoneySplitCard(
  * Sorted by amount descending -- the biggest contributor to the total
  * reads first, which is usually what a user checking this card wants to
  * know ("what's actually costing me money here").
+ *
+ * Bug fix, 2026-09-16, found via real on-device QA testing: with every
+ * category showing (up to 5-6 possible: Insurance/AMC/Subscription/
+ * Membership/Other, occasionally Warranty), the joined string could run
+ * to ~90+ characters -- e.g. "Insurance $1,183.33/mo · Subscription
+ * $1,057.25/mo · Membership $1,000.00/mo · AMC $491.67/mo" -- which
+ * silently lost whole categories to MoneySplitHalf's line-count-bounded
+ * ellipsis (confirmed via UI dump: the full string existed in the
+ * accessibility tree, but the rendered screenshot showed only "...·
+ * S..."). Raising the line budget to fit it was tried and reverted (see
+ * the call site's own comment) since this screen's layout is a plain,
+ * non-scrolling Column by design -- a taller card has nowhere to grow
+ * except into the floating Add button. Bounding the DATA instead: at
+ * most the top 2 categories (already sorted by amount, so these are the
+ * two biggest contributors -- the ones this card's own doc comment above
+ * says matter most), plus a "+N more" suffix that stays short and fully
+ * legible regardless of how many categories exist, rather than an
+ * unpredictable mid-word ellipsis cutoff.
  */
 @Composable
 private fun recurringBreakdownText(summary: HomeSummary): String {
@@ -598,11 +673,15 @@ private fun recurringBreakdownText(summary: HomeSummary): String {
     // context of a @Composable function"). map()'s transform parameter is
     // non-nullable and genuinely inlined, so the Composable call is fine
     // there.
-    val parts = summary.recurringByCategory.entries
-        .sortedByDescending { it.value }
+    val sorted = summary.recurringByCategory.entries.sortedByDescending { it.value }
+    val shown = sorted.take(MAX_RECURRING_CATEGORIES_SHOWN)
         .map { (category, amount) -> "${category.displayName} ${amount.toCurrencyString()}/mo" }
-    return parts.joinToString(" · ")
+    val remaining = sorted.size - shown.size
+    val breakdown = shown.joinToString(" · ")
+    return if (remaining > 0) "$breakdown +$remaining more" else breakdown
 }
+
+private const val MAX_RECURRING_CATEGORIES_SHOWN = 2
 
 @Composable
 private fun MoneySplitHalf(
@@ -615,9 +694,14 @@ private fun MoneySplitHalf(
     modifier: Modifier = Modifier,
     // Recurring-costs breakdown pass, 2026-09-01: the per-category
     // breakdown subtitle can run longer than a plain item count, so that
-    // caller opts into 2 lines; "At risk this month" keeps the original
-    // single-line behaviour by not passing this.
-    subtitleMaxLines: Int = 1
+    // caller opts into more lines; "At risk this month" keeps the
+    // original single-line behaviour by not passing this.
+    subtitleMaxLines: Int = 1,
+    // Bug fix, 2026-09-16: same reasoning as subtitleMaxLines -- the
+    // value itself can run longer than fits on one line once a currency
+    // symbol plus a realistic multi-thousand total plus "/mo" are all
+    // present together (see the "Monthly recurring costs" call site).
+    valueMaxLines: Int = 1
 ) {
     Column(
         modifier = modifier
@@ -639,7 +723,7 @@ private fun MoneySplitHalf(
             fontFamily = MaterialTheme.typography.titleLarge.fontFamily,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
-            maxLines = 1,
+            maxLines = valueMaxLines,
             overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onSurface
         )
