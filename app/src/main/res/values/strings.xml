@@ -44,6 +44,7 @@
     <string name="error_expiry_required">Pick an expiry / next due date.</string>
     <string name="error_invalid_amount">Enter a valid amount, 0 or more.</string>
     <string name="error_invalid_number">Enter a valid whole number, 0 or more.</string>
+    <string name="error_field_required">This field is required.</string>
     <string name="error_expiry_before_purchase">Expiry date can\'t be before the purchase date.</string>
     <string name="error_camera_permission">Camera permission is needed to take a photo.</string>
     <string name="ocr_prefill_toast">Some fields were filled in from the scan — please check them</string>

@@ -902,6 +902,40 @@ android {
         versionCode = 63
         versionName = "0.16.8-dashboard-spacing-fix"
 
+        // 2026-09-17 (feedback): two more changes.
+        // (1) "For AMC, Membership and Subscription make the Billing cycle
+        // and Billing amount mandatory. For Insurance make premium
+        // frequency and premium paid mandatory." Insurance's "Premium
+        // frequency"/"Premium paid" are the exact same billingCycle/
+        // billingAmount fields, just relabelled (billingCycleLabel/
+        // billingAmountLabel) -- one requirement check covers both.
+        // AddEditItemScreen.kt gained billingRequiredForCategory (AMC,
+        // MEMBERSHIP, SUBSCRIPTION, INSURANCE) plus billingCycleMissing/
+        // billingAmountMissing, blocking Save with an inline "This field is
+        // required." on whichever is empty, and a " *" appended to the
+        // label the same way Name/Expiry already mark themselves required.
+        // Warranty (no Billing section at all) and Other (genuinely
+        // optional) are unaffected. Verified live on-device: AMC with both
+        // fields blank shows both errors and Save is blocked; filling
+        // either clears its own error independently.
+        // (2) "The attached file cannot be opened normally -- you can see
+        // a snapshot but it cannot be expanded... make the thumbnail
+        // smaller but on clicking allow it to open normally in a PDF
+        // viewer or the relevant application." AttachmentThumbnail shrunk
+        // 88dp -> 64dp (delete-button/badge scaled to match). The viewer
+        // dialog's preview was always a static, non-zoomable render (page
+        // 1 only for a PDF) -- added an "Open" action (button + tapping
+        // the preview itself) that hands the attachment to a real external
+        // app via ACTION_VIEW, so a multi-page PDF can actually be paged
+        // through and zoomed, not just glanced at. Attachment.localFileUri
+        // is already a FileProvider content:// Uri with grantUriPermissions
+        // already enabled in the manifest, so this needed no new
+        // permission plumbing. Verified live on-device: tapping Open
+        // launched the real Android share/open-with chooser (Photos, Files
+        // by Google, etc.) for an attached image.
+        versionCode = 64
+        versionName = "0.16.9-billing-required-and-attachment-open"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

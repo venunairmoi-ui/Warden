@@ -1,5 +1,7 @@
 package com.venunair.wisma.ui.attachment
 
+import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.AlertDialog
@@ -101,10 +104,13 @@ fun AttachmentThumbnail(
     } else {
         "View photo attachment"
     }
+    // Feedback, 2026-09-17: "make the attachment thumbnail smaller" -- was
+    // 88dp; the delete-button/PDF-badge overlays below are scaled down to
+    // match rather than left at their old absolute sizes.
     Box(
         modifier = modifier
-            .size(88.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .size(64.dp)
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .semantics { contentDescription = thumbnailDescription }
     ) {
@@ -167,14 +173,14 @@ fun AttachmentThumbnail(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(2.dp)
-                    .size(36.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .clickable(onClick = delete),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(18.dp)
                         .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -182,7 +188,7 @@ fun AttachmentThumbnail(
                         Icons.Filled.Close,
                         contentDescription = "Remove attachment",
                         tint = Color.White,
-                        modifier = Modifier.padding(3.dp)
+                        modifier = Modifier.padding(2.dp)
                     )
                 }
             }
@@ -293,6 +299,22 @@ fun AttachmentViewerDialog(
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                // Feedback, 2026-09-17: "the attached file cannot be opened
+                // normally -- you can see a snapshot but it cannot be
+                // expanded... if the user has to view and verify the
+                // attachment." The Image() below is a static, non-zoomable
+                // render (page 1 only, for a PDF) -- fine for a quick
+                // glance, not for actually reading a multi-page document or
+                // zooming into fine print. This button hands the file to
+                // whatever real PDF viewer / gallery app is installed via a
+                // normal ACTION_VIEW, which supports pinch-zoom and (for
+                // PDFs) paging through every page, not just the first.
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { openAttachmentExternally(context, attachment) }) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("Open", modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
                 when (attachment.mimeType) {
                     AttachmentMimeType.IMAGE -> {
                         val bitmap = rememberLocalThumbnail(attachment.localFileUri, reqSizePx = 1200)
@@ -300,7 +322,10 @@ fun AttachmentViewerDialog(
                             Image(
                                 bitmap = bitmap,
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(bitmap.width.toFloat() / bitmap.height)
+                                    .clickable { openAttachmentExternally(context, attachment) },
                                 contentScale = ContentScale.Fit
                             )
                         } else {
@@ -321,7 +346,10 @@ fun AttachmentViewerDialog(
                             Image(
                                 bitmap = pageBitmap,
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(pageBitmap.width.toFloat() / pageBitmap.height),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(pageBitmap.width.toFloat() / pageBitmap.height)
+                                    .clickable { openAttachmentExternally(context, attachment) },
                                 contentScale = ContentScale.Fit
                             )
                         } else {
@@ -330,6 +358,18 @@ fun AttachmentViewerDialog(
                             }
                         }
                     }
+                }
+                // This dialog's preview above is deliberately page-1-only
+                // (PDF) / a single static render -- a real multi-page PDF
+                // needs the "Open" button above (or tapping the preview
+                // itself, wired the same way) to actually read past page 1.
+                if (attachment.mimeType == AttachmentMimeType.PDF) {
+                    Text(
+                        "Tap the preview or \"Open\" above to view all pages, zoom, or search text in your PDF viewer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
 
                 parsed?.takeIf {
@@ -519,6 +559,34 @@ fun AttachmentViewerDialog(
             }
         }
     )
+}
+
+/**
+ * Feedback, 2026-09-17: hands the attachment off to a real external viewer
+ * (the device's default PDF app / gallery) via a normal ACTION_VIEW --
+ * [Attachment.localFileUri] is already a FileProvider content:// Uri (see
+ * AttachmentStorage.uriForFile's doc comment), never a raw file:// one, so
+ * this works without any extra permission grant beyond the READ flag below.
+ * A generic image MIME wildcard for IMAGE attachments (real files are
+ * always .jpg per AttachmentStorage, but the wildcard is harmless and
+ * future-proof) rather than hardcoding a single image type. Wrapped in a chooser
+ * so the user picks an app even when several could handle it, with a
+ * Toast fallback for the rare case nothing on the device can.
+ */
+private fun openAttachmentExternally(context: Context, attachment: Attachment) {
+    val mimeType = when (attachment.mimeType) {
+        AttachmentMimeType.PDF -> "application/pdf"
+        AttachmentMimeType.IMAGE -> "image/*"
+    }
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(attachment.localFileUri.toUri(), mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, null))
+    }.onFailure {
+        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
+    }
 }
 
 /**

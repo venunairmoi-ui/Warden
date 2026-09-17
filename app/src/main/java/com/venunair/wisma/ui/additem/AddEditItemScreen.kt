@@ -374,10 +374,32 @@ fun AddEditItemScreen(
     var billingAmountTouched by remember { mutableStateOf(false) }
     var billingAmountHasBeenFocused by remember { mutableStateOf(false) }
     val costInvalid = costText.isNotBlank() && (costText.toDoubleOrNull()?.let { it < 0 } ?: true)
-    val billingAmountInvalid = billingAmountText.isNotBlank() &&
+    val billingAmountFormatInvalid = billingAmountText.isNotBlank() &&
         (billingAmountText.toDoubleOrNull()?.let { it < 0 } ?: true)
     val costError = (costTouched || attemptedSave) && costInvalid
-    val billingAmountError = (billingAmountTouched || attemptedSave) && billingAmountInvalid
+
+    // Feedback, 2026-09-17: "for AMC, Membership and Subscription make the
+    // Billing cycle and Billing amount mandatory. For Insurance, make
+    // premium frequency and premium paid mandatory" -- Insurance's "Premium
+    // frequency"/"Premium paid" are the same underlying billingCycle/
+    // billingAmount fields, just relabelled (see billingCycleLabel/
+    // billingAmountLabel's own doc comments), so one requirement check
+    // covers both. Warranty and Other are unaffected -- Warranty never even
+    // shows this section (see showBilling above), and Other's billing is
+    // genuinely optional (no fixed real-world expectation the way a
+    // subscription/AMC/membership/policy always has a cycle and amount).
+    val billingRequiredForCategory = category == ItemCategory.AMC ||
+        category == ItemCategory.MEMBERSHIP ||
+        category == ItemCategory.SUBSCRIPTION ||
+        category == ItemCategory.INSURANCE
+    val billingCycleMissing = billingRequiredForCategory && billingCycle == null
+    val billingAmountMissing = billingRequiredForCategory && billingAmountText.isBlank()
+    // Blocks Save either way -- garbage/negative input, or a required field
+    // left blank -- but the two get distinct messages below so the user
+    // knows which problem they actually have.
+    val billingAmountBlockingError = billingAmountFormatInvalid || billingAmountMissing
+    val billingCycleError = attemptedSave && billingCycleMissing
+    val billingAmountError = (billingAmountTouched || attemptedSave) && billingAmountBlockingError
 
     // Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): AMC's Visits
     // included / Service interval and Membership's Members covered had zero
@@ -1231,7 +1253,13 @@ fun AddEditItemScreen(
                             value = billingCycle?.displayName ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text(category.billingCycleLabel()) },
+                            label = {
+                                Text(category.billingCycleLabel() + if (billingRequiredForCategory) " *" else "")
+                            },
+                            isError = billingCycleError,
+                            supportingText = if (billingCycleError) {
+                                { Text(stringResource(R.string.error_field_required)) }
+                            } else null,
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                 .fillMaxWidth()
@@ -1255,10 +1283,17 @@ fun AddEditItemScreen(
                     OutlinedTextField(
                         value = billingAmountText,
                         onValueChange = { billingAmountText = it },
-                        label = { Text(category.billingAmountLabel()) },
+                        label = {
+                            Text(category.billingAmountLabel() + if (billingRequiredForCategory) " *" else "")
+                        },
                         isError = billingAmountError,
                         supportingText = if (billingAmountError) {
-                            { Text(stringResource(R.string.error_invalid_amount)) }
+                            {
+                                Text(
+                                    if (billingAmountMissing) stringResource(R.string.error_field_required)
+                                    else stringResource(R.string.error_invalid_amount)
+                                )
+                            }
                         } else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier
@@ -1400,7 +1435,8 @@ fun AddEditItemScreen(
                         name.isBlank() -> Unit
                         expiryDate == null -> Unit
                         costInvalid -> Unit
-                        billingAmountInvalid -> Unit
+                        billingCycleMissing -> Unit
+                        billingAmountBlockingError -> Unit
                         visitsIncludedInvalid -> Unit
                         serviceIntervalInvalid -> Unit
                         membersCoveredInvalid -> Unit
