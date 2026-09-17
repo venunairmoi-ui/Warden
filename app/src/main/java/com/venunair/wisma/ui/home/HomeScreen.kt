@@ -124,6 +124,7 @@ import com.venunair.wisma.data.Item
 import com.venunair.wisma.data.ItemCategory
 import com.venunair.wisma.data.ItemRepository
 import com.venunair.wisma.data.SearchResult
+import com.venunair.wisma.data.isRecurringPayment
 import com.venunair.wisma.reminders.ReminderCheckWorker
 import com.venunair.wisma.ui.common.categoryIcon
 import com.venunair.wisma.ui.common.toCurrencyString
@@ -1157,6 +1158,31 @@ private fun ProductCardContent(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        // Feedback, 2026-09-17: "on the dashboard the monthly
+                        // recurring costs shows a value, but clicking through
+                        // shows a lot of cards without the individual
+                        // recurring cost of each" -- the per-item billing
+                        // amount was never shown on this card at all, only
+                        // ever visible one tap deeper on the item's own
+                        // detail screen. Same monthly-normalisation
+                        // (billingAmount * billingCycle.toMonthlyFactor()) as
+                        // OverviewScreen's own headline total, so a glance at
+                        // this card and a glance at that total are always
+                        // talking about the same figure. Guarded by > 0.0
+                        // rather than just isRecurringPayment so a
+                        // ONE_TIME-billed item (toMonthlyFactor() == 0) never
+                        // shows a misleading "$0.00/mo".
+                        if (item.isRecurringPayment) {
+                            val monthly = item.billingAmount!! * item.billingCycle!!.toMonthlyFactor()
+                            if (monthly > 0.0) {
+                                Text(
+                                    "${monthly.toCurrencyString()}/mo",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                         belowVendorContent?.invoke()
                     }

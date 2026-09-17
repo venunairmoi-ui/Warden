@@ -49,7 +49,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -442,10 +441,28 @@ fun OverviewScreen(
                     onClick = { onOpenProducts(HomeViewModel.QuickFilter.EXPIRED, false) }
                 )
             }
-            MoneySplitCard(
-                summary = summary,
-                onAtRiskClick = { onOpenProducts(HomeViewModel.QuickFilter.AT_RISK, false) },
-                onSubscriptionsClick = { onOpenProducts(HomeViewModel.QuickFilter.SUBSCRIPTIONS, false) }
+            // Feedback, 2026-09-17: "the last card feels cluttered... At
+            // Risk can be a card by itself and Monthly recurring can be
+            // another card" -- two independent, full-width stacked cards
+            // (MoneyCard) instead of the old single card split by a
+            // vertical divider (MoneySplitCard/MoneySplitHalf). The parent
+            // Column's own spacedBy(16.dp) already gives these the same
+            // rhythm as every other card on this screen.
+            MoneyCard(
+                icon = Icons.Filled.TrendingDown,
+                label = "At risk this month",
+                value = summary.moneyAtRisk.toCurrencyString(),
+                subtitle = "${summary.expiringCount} item${if (summary.expiringCount != 1) "s" else ""} expiring",
+                tint = ItemUrgency.SOON.color(),
+                onClick = { onOpenProducts(HomeViewModel.QuickFilter.AT_RISK, false) }
+            )
+            MoneyCard(
+                icon = Icons.Filled.Autorenew,
+                label = "Monthly recurring costs",
+                value = "${summary.totalRecurringMonthly.toCurrencyString()}/mo",
+                subtitle = recurringBreakdownText(summary),
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = { onOpenProducts(HomeViewModel.QuickFilter.SUBSCRIPTIONS, false) }
             )
         }
     }
@@ -491,7 +508,7 @@ private fun OverviewTotalHeader(itemCount: Int, onClick: () -> Unit, modifier: M
  * and it read as "nowhere close" to the attachment once built). Rebuilt
  * to match the mockup's card shape directly: same bordered
  * surfaceContainerLow/outlineVariant/shapes.large convention as
- * OverviewTotalHeader and MoneySplitCard, sized compactly enough (18dp
+ * OverviewTotalHeader and MoneyCard, sized compactly enough (18dp
  * vertical padding, not the mockup's much taller card) that three of
  * these stacked, plus the total header and the money card, still clear
  * one screen without scrolling -- the mockup's own screenshot does NOT
@@ -549,78 +566,67 @@ private fun OverviewStatCard(
 }
 
 /**
- * Feedback, 2026-08-25: "Under that will be a Single Card split into two"
- * -- ONE bordered Card (same surfaceContainerLow/outlineVariant convention
- * as OverviewStatCard and every other card in this redesign) with a
- * vertical divider splitting it into two independently-clickable halves,
- * rather than the two separate side-by-side cards this used to be
- * (HomeScreen's now-removed SummaryCards/SummaryCard).
+ * Feedback, 2026-09-17: "the last card feels cluttered and not neat like
+ * above -- At Risk can be a card by itself and Monthly recurring can be
+ * another card" -- replaces the old MoneySplitCard/MoneySplitHalf (one
+ * bordered Card split into two halves by a vertical divider) with two
+ * independent, full-width stacked cards, same surfaceContainerLow/
+ * outlineVariant/shapes.large convention as OverviewStatCard and
+ * OverviewTotalHeader above, so this screen reads as one consistent card
+ * language throughout instead of the money card alone looking visually
+ * denser than everything above it. Card's own onClick (not a Modifier.
+ * clickable on an inner Column) for the same built-in ripple/accessibility
+ * semantics OverviewStatCard already uses.
+ *
+ * Also drops the headline amount's font size from 20sp to 16sp per the
+ * same feedback ("smaller font size for the amounts") -- each card now has
+ * a full line to itself rather than competing with a sibling half for
+ * width, so the amount no longer needs to be as large to read clearly.
  */
 @Composable
-private fun MoneySplitCard(
-    summary: HomeSummary,
-    onAtRiskClick: () -> Unit,
-    onSubscriptionsClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun MoneyCard(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    subtitle: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitleMaxLines: Int = 2
 ) {
     Card(
+        onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.large
     ) {
-        Row(modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
-            MoneySplitHalf(
-                icon = Icons.Filled.TrendingDown,
-                label = "At risk this month",
-                value = summary.moneyAtRisk.toCurrencyString(),
-                subtitle = "${summary.expiringCount} item${if (summary.expiringCount != 1) "s" else ""} expiring",
-                tint = ItemUrgency.SOON.color(),
-                onClick = onAtRiskClick,
-                modifier = Modifier.weight(1f)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = tint)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                value,
+                fontFamily = MaterialTheme.typography.titleLarge.fontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            VerticalDivider(
-                modifier = Modifier.fillMaxHeight(),
-                color = MaterialTheme.colorScheme.outlineVariant
-            )
-            MoneySplitHalf(
-                icon = Icons.Filled.Autorenew,
-                label = "Monthly recurring costs",
-                // Feedback, 2026-09-01: "display the recurring cost per
-                // month" -- totalRecurringMonthly was already a
-                // monthly-normalised figure (a yearly AMC contract's
-                // amount divided down, see computeSummary's
-                // monthlyAmountOf), but nothing on screen said so, so a
-                // billing-cycle amount and its monthly-equivalent looked
-                // identical. The "/mo" suffix here and in the breakdown
-                // below makes that normalisation visible instead of implicit.
-                value = "${summary.totalRecurringMonthly.toCurrencyString()}/mo",
-                // Bug fix, 2026-09-16, found via real on-device QA testing:
-                // the value was clipping real, valid text -- e.g.
-                // "$5,273.92/mo" cut to "$5,273.92/..." at the old
-                // hardcoded maxLines=1. A currency string plus "/mo" is
-                // short and bounded (never more than 2 lines even in a
-                // half-width card at this font size), so 2 lines here is
-                // safe headroom, unlike the breakdown below.
-                //
-                // First attempt at this same bug also raised
-                // subtitleMaxLines (to 4, to stop a realistic 4-category
-                // breakdown from ellipsizing) -- caught before shipping
-                // that it violates this screen's own deliberate "fits the
-                // screen without a scroll, enforced structurally" design
-                // (see this file's OverviewScreen doc comment): confirmed
-                // live on-device that a taller card collided with the
-                // floating Add button, with no scroll to reach the hidden
-                // text. Reverted subtitleMaxLines to its original 2 --
-                // see recurringBreakdownText below for the real fix,
-                // which bounds the DATA shown instead of the line count.
-                subtitle = recurringBreakdownText(summary),
-                valueMaxLines = 2,
-                subtitleMaxLines = 2,
-                tint = MaterialTheme.colorScheme.primary,
-                onClick = onSubscriptionsClick,
-                modifier = Modifier.weight(1f)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = subtitleMaxLines,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -682,61 +688,6 @@ private fun recurringBreakdownText(summary: HomeSummary): String {
 }
 
 private const val MAX_RECURRING_CATEGORIES_SHOWN = 2
-
-@Composable
-private fun MoneySplitHalf(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    subtitle: String,
-    tint: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    // Recurring-costs breakdown pass, 2026-09-01: the per-category
-    // breakdown subtitle can run longer than a plain item count, so that
-    // caller opts into more lines; "At risk this month" keeps the
-    // original single-line behaviour by not passing this.
-    subtitleMaxLines: Int = 1,
-    // Bug fix, 2026-09-16: same reasoning as subtitleMaxLines -- the
-    // value itself can run longer than fits on one line once a currency
-    // symbol plus a realistic multi-thousand total plus "/mo" are all
-    // present together (see the "Monthly recurring costs" call site).
-    valueMaxLines: Int = 1
-) {
-    Column(
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = tint)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            value,
-            fontFamily = MaterialTheme.typography.titleLarge.fontFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-            maxLines = valueMaxLines,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = subtitleMaxLines,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
 
 // ── Empty state ─────────────────────────────────────────────────────
 // Duplicated from HomeScreen.kt's own EmptyState (top-level `private` is

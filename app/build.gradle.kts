@@ -830,6 +830,33 @@ android {
         versionCode = 60
         versionName = "0.16.5-chaos-qa-fixes"
 
+        // 2026-09-17 (user feedback, dashboard/UX pass): two asks. (1) "on
+        // the dashboard the monthly recurring costs shows a value, but
+        // clicking through shows a lot of cards without the individual
+        // recurring cost of each" -- HomeScreen.kt's ProductCard never
+        // showed a per-item billing amount at all, only ever one tap deeper
+        // on the item's own detail screen. Added a "$X/mo" line under
+        // vendor, same monthly-normalisation (billingAmount *
+        // billingCycle.toMonthlyFactor()) as OverviewScreen's own headline
+        // total, guarded by > 0.0 so a ONE_TIME-billed item never shows a
+        // misleading "$0.00/mo". (2) "the last card feels cluttered... At
+        // Risk can be a card by itself and Monthly recurring can be
+        // another card... smaller font size for the amounts" --
+        // OverviewScreen.kt's MoneySplitCard/MoneySplitHalf (one card split
+        // by a vertical divider) replaced with MoneyCard, two independent
+        // full-width stacked cards using the same surfaceContainerLow/
+        // outlineVariant/shapes.large convention as OverviewStatCard, with
+        // the headline amount's font size dropped 20sp -> 16sp now that
+        // each card has a full line to itself.
+        // Verified live on-device: the Recurring-costs filtered list now
+        // shows each item's own monthly amount directly on its card
+        // (Whirlpool AMC $291.67/mo, Netflix $649.00/mo, etc.) without
+        // needing to open it; the Overview screen's two money cards render
+        // as separate full-width cards, both clear of the floating Add
+        // button, at the smaller font size.
+        versionCode = 61
+        versionName = "0.16.6-dashboard-declutter"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
