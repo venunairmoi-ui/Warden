@@ -597,13 +597,22 @@ private fun SearchResultsList(
 ) {
     if (results.isEmpty()) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
             contentAlignment = Alignment.Center
         ) {
+            // Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): an
+            // extremely long search query echoed back here wrapped across
+            // many lines -- not a functional bug, just visually busy for a
+            // query no one would actually type. Truncated display-only; the
+            // real (untruncated) query still drives the actual search above.
+            val displayQuery = query.take(40).let { if (it.length < query.length) "$it…" else it }
             Text(
-                stringResource(R.string.search_no_results_for, query),
+                stringResource(R.string.search_no_results_for, displayQuery),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
         }
     } else {

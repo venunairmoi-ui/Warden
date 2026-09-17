@@ -759,6 +759,77 @@ android {
         versionCode = 59
         versionName = "0.16.4-qa-agent-fixes"
 
+        // 2026-09-17: fixes from the chaos/end-user-persona QA pass (agent 2,
+        // re-dispatched after the prior session paused mid-run -- see
+        // versionCode 59's own log entry above for what agent 1 already
+        // covered). Real bugs found via live on-device chaos testing, fixed
+        // and re-verified live on the same device (Oppo/OnePlus CPH2573):
+        // 1. Rapid-tapping a nav-triggering button (the Home Add FAB
+        //    especially) pushed multiple destination instances onto the
+        //    back stack -- every navController.navigate() call site was
+        //    bare, with no duplicate-destination guard. Fixed with a
+        //    navigateSafe() wrapper (WardenNavHost.kt) that only navigates
+        //    when the current back stack entry is RESUMED -- the official
+        //    Compose Navigation pattern for exactly this, so a tap landing
+        //    mid-transition is naturally swallowed. Verified: 5 rapid FAB
+        //    taps now take exactly 1 back-press to return to Home (was 3).
+        // 2. Every free-text field except Name had no length cap --
+        //    AddEditItemScreen.kt's Vendor, Location, Serial/Model number,
+        //    Retailer, Invoice number, Service provider contact, plan tier,
+        //    and nominee name could all grow unbounded, breaking the form's
+        //    layout (live-reproduced on Vendor: ~180 chars pushed every
+        //    field below off-screen). New MAX_TEXT_FIELD_LENGTH (200) /
+        //    MAX_NOTES_LENGTH (2000) constants, same .take()-on-input
+        //    pattern as the existing MAX_NAME_LENGTH fix. Verified: 400
+        //    chars into Vendor now stops at exactly 200 on-device.
+        // 3. AMC's Visits included / Service interval and Membership's
+        //    Members covered had zero numeric validation -- a negative
+        //    number saved and displayed verbatim, non-numeric text
+        //    silently vanished via toIntOrNull() with no feedback. Fixed
+        //    with the same blank-is-fine-but-invalid-blocks-save shape as
+        //    Cost/Billing amount already use, gated on attemptedSave only
+        //    (not a per-field touched/focused dance, since these are
+        //    secondary fields).
+        // 4. Date pickers had no chronological sanity check -- an expiry
+        //    date before the purchase date saved fine. Added a
+        //    dateOrderInvalid check (only once both dates are set) that
+        //    blocks Save with an inline error on the Expiry field.
+        // 5. Search results didn't refresh after a delete until the query
+        //    was retyped -- HomeViewModel's search only re-ran on query-TEXT
+        //    change (distinctUntilChanged on the query alone), not on the
+        //    underlying item list changing. Now combined with the already-
+        //    observed `allItems` StateFlow so any data change re-runs the
+        //    current search too.
+        // 6. An extremely long search query wrapped the "No results for..."
+        //    message across many lines. Now truncated for display only (the
+        //    real query still drives the actual search).
+        // NOT fixed -- investigated and disproven, not a real app bug: the
+        // QA agent also reported the item detail screen hanging
+        // indefinitely on a chaos-input item ("ChaosMembership") that
+        // supposedly couldn't be deleted afterward. Pulling the actual
+        // on-device database found no such row at all (all 3 of the
+        // agent's test items were in fact deleted -- sqlite_sequence's
+        // high-water mark confirms it), and logcat shows ColorOS's own
+        // memory-management process freezer (OsenseKillAction,
+        // freeze_dur=1500ms) firing on essentially every app-switch back
+        // into Wisma throughout the whole session -- routine OEM behavior
+        // on this phone, not specific to that item. Far more likely
+        // explanation for a ~1.5s unresponsive window than an app defect;
+        // not chased further.
+        // A second minor/cosmetic finding (search-result subtitle
+        // concatenating vendor + members-covered with no separator) could
+        // not be located in any actual rendering code path (ProductCard
+        // renders vendor on its own separate Text, and members-covered
+        // isn't shown on cards at all) -- left unfixed pending a real
+        // reproduction, since the offending chaos item no longer exists to
+        // re-check against.
+        // Verified: full compileDebugKotlin + assembleDebug succeed;
+        // FAB-rapid-tap and Vendor-length-cap fixes confirmed live on the
+        // same physical device via uiautomator dumps, not just re-reading
+        // the code.
+        versionCode = 60
+        versionName = "0.16.5-chaos-qa-fixes"
+
         vectorDrawables { useSupportLibrary = true }
     }
 

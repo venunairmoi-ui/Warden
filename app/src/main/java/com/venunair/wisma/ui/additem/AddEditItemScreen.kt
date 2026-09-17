@@ -160,6 +160,17 @@ private const val MAX_OCR_PAGES = 5
 // ("Whirlpool Washing Machine AMC" is ~30) while still bounding worst case.
 private const val MAX_NAME_LENGTH = 100
 
+// Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): every other free-text
+// field (Vendor, Location, Serial/Model number, Retailer, Invoice number,
+// Service provider contact, plan tier, nominee name, reference number) had
+// no cap at all -- same unbounded-growth card-layout break as MAX_NAME_LENGTH
+// above, live-reproduced on Vendor (~180 chars pushed every field below it
+// off-screen). 200 is generous for any of these short identifier-style
+// fields; Notes is a real free-form paragraph field so it gets its own,
+// larger cap instead of sharing this one.
+private const val MAX_TEXT_FIELD_LENGTH = 200
+private const val MAX_NOTES_LENGTH = 2000
+
 private data class PendingAttachment(
     val id: Long,
     val localUri: String,
@@ -367,6 +378,33 @@ fun AddEditItemScreen(
         (billingAmountText.toDoubleOrNull()?.let { it < 0 } ?: true)
     val costError = (costTouched || attemptedSave) && costInvalid
     val billingAmountError = (billingAmountTouched || attemptedSave) && billingAmountInvalid
+
+    // Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): AMC's Visits
+    // included / Service interval and Membership's Members covered had zero
+    // numeric validation -- a negative number saved and displayed verbatim
+    // (e.g. item detail showed "Visits included per year: -5"), and
+    // non-numeric text silently vanished via toIntOrNull() with no feedback.
+    // Same blank-is-fine-but-invalid-blocks-save shape as cost/billing amount
+    // above, gated on attemptedSave only (not a per-field touched/focused
+    // dance) since these are secondary, category-specific fields rather than
+    // the two most-visited ones.
+    val visitsIncludedInvalid = visitsIncludedText.isNotBlank() &&
+        (visitsIncludedText.toIntOrNull()?.let { it < 0 } ?: true)
+    val serviceIntervalInvalid = serviceIntervalText.isNotBlank() &&
+        (serviceIntervalText.toIntOrNull()?.let { it < 0 } ?: true)
+    val membersCoveredInvalid = membersCoveredText.isNotBlank() &&
+        (membersCoveredText.toIntOrNull()?.let { it < 0 } ?: true)
+    val visitsIncludedError = attemptedSave && visitsIncludedInvalid
+    val serviceIntervalError = attemptedSave && serviceIntervalInvalid
+    val membersCoveredError = attemptedSave && membersCoveredInvalid
+
+    // Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): date pickers had
+    // no chronological sanity check -- an expiry date before the purchase
+    // date saved fine (e.g. "Expired 80 months ago" for an item not yet
+    // purchased). Only checked once both dates are actually set; a
+    // brand-new item with no purchase date yet is unaffected.
+    val dateOrderInvalid = purchaseDate != null && expiryDate != null && purchaseDate!!.isAfter(expiryDate)
+    val dateOrderError = attemptedSave && dateOrderInvalid
 
     // Retaxonomy, 2026-08-25: subcategory options depend on the chosen
     // category (subcategoriesFor). If the user switches category and the
@@ -866,7 +904,7 @@ fun AddEditItemScreen(
                 )
                 OutlinedTextField(
                     value = vendor,
-                    onValueChange = { vendor = it },
+                    onValueChange = { vendor = it.take(MAX_TEXT_FIELD_LENGTH) },
                     label = { Text(stringResource(R.string.field_vendor)) },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -991,11 +1029,11 @@ fun AddEditItemScreen(
                     label = stringResource(R.string.field_expiry_date),
                     date = expiryDate,
                     onClick = { datePickerTarget = DateFieldTarget.EXPIRY },
-                    isError = expiryError,
-                    supportingText = if (expiryError) {
-                        stringResource(R.string.error_expiry_required)
-                    } else {
-                        expiryDate?.toRelativeDueString()
+                    isError = expiryError || dateOrderError,
+                    supportingText = when {
+                        expiryError -> stringResource(R.string.error_expiry_required)
+                        dateOrderError -> stringResource(R.string.error_expiry_before_purchase)
+                        else -> expiryDate?.toRelativeDueString()
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1021,7 +1059,7 @@ fun AddEditItemScreen(
                 )
                 OutlinedTextField(
                     value = amcNumber,
-                    onValueChange = { amcNumber = it },
+                    onValueChange = { amcNumber = it.take(MAX_TEXT_FIELD_LENGTH) },
                     label = { Text(stringResource(R.string.label_optional_suffix, category.referenceNumberLabel())) },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1034,6 +1072,11 @@ fun AddEditItemScreen(
                         value = visitsIncludedText,
                         onValueChange = { visitsIncludedText = it },
                         label = { Text(stringResource(R.string.field_visits_included)) },
+                        isError = visitsIncludedError,
+                        supportingText = if (visitsIncludedError) {
+                            { Text(stringResource(R.string.error_invalid_number)) }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1048,6 +1091,11 @@ fun AddEditItemScreen(
                         value = serviceIntervalText,
                         onValueChange = { serviceIntervalText = it },
                         label = { Text(stringResource(R.string.field_service_interval)) },
+                        isError = serviceIntervalError,
+                        supportingText = if (serviceIntervalError) {
+                            { Text(stringResource(R.string.error_invalid_number)) }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1057,7 +1105,7 @@ fun AddEditItemScreen(
                 AnimatedVisibility(visible = category == ItemCategory.AMC) {
                     OutlinedTextField(
                         value = serviceProviderContact,
-                        onValueChange = { serviceProviderContact = it },
+                        onValueChange = { serviceProviderContact = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_service_provider_contact)) },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1100,14 +1148,14 @@ fun AddEditItemScreen(
                 AnimatedVisibility(visible = category == ItemCategory.INSURANCE) {
                     OutlinedTextField(
                         value = nomineeName,
-                        onValueChange = { nomineeName = it },
+                        onValueChange = { nomineeName = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_nominee)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 OutlinedTextField(
                     value = location,
-                    onValueChange = { location = it },
+                    onValueChange = { location = it.take(MAX_TEXT_FIELD_LENGTH) },
                     label = { Text(stringResource(R.string.field_location)) },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1138,25 +1186,25 @@ fun AddEditItemScreen(
                 FormSectionCard(title = stringResource(R.string.section_product_details)) {
                     OutlinedTextField(
                         value = serialNumber,
-                        onValueChange = { serialNumber = it },
+                        onValueChange = { serialNumber = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_serial_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = modelNumber,
-                        onValueChange = { modelNumber = it },
+                        onValueChange = { modelNumber = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_model_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = retailer,
-                        onValueChange = { retailer = it },
+                        onValueChange = { retailer = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_retailer)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = invoiceNumber,
-                        onValueChange = { invoiceNumber = it },
+                        onValueChange = { invoiceNumber = it.take(MAX_TEXT_FIELD_LENGTH) },
                         label = { Text(stringResource(R.string.field_invoice_number)) },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1229,7 +1277,7 @@ fun AddEditItemScreen(
                     AnimatedVisibility(visible = category == ItemCategory.SUBSCRIPTION || category == ItemCategory.MEMBERSHIP) {
                         OutlinedTextField(
                             value = planTier,
-                            onValueChange = { planTier = it },
+                            onValueChange = { planTier = it.take(MAX_TEXT_FIELD_LENGTH) },
                             label = { Text(stringResource(R.string.label_optional_suffix, category.planTierLabel())) },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -1241,6 +1289,11 @@ fun AddEditItemScreen(
                             value = membersCoveredText,
                             onValueChange = { membersCoveredText = it },
                             label = { Text(stringResource(R.string.field_members_covered)) },
+                            isError = membersCoveredError,
+                            supportingText = if (membersCoveredError) {
+                                { Text(stringResource(R.string.error_invalid_number)) }
+                            } else null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -1324,7 +1377,7 @@ fun AddEditItemScreen(
             FormSectionCard(title = stringResource(R.string.detail_notes)) {
                 OutlinedTextField(
                     value = notes,
-                    onValueChange = { notes = it },
+                    onValueChange = { notes = it.take(MAX_NOTES_LENGTH) },
                     label = { Text(stringResource(R.string.field_notes)) },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1348,6 +1401,10 @@ fun AddEditItemScreen(
                         expiryDate == null -> Unit
                         costInvalid -> Unit
                         billingAmountInvalid -> Unit
+                        visitsIncludedInvalid -> Unit
+                        serviceIntervalInvalid -> Unit
+                        membersCoveredInvalid -> Unit
+                        dateOrderInvalid -> Unit
                         else -> {
                             error = null
                             viewModel.save(

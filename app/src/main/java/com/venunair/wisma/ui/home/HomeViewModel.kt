@@ -118,11 +118,20 @@ class HomeViewModel(private val repository: ItemRepository) : ViewModel() {
     }
 
     init {
+        // Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): searchItems()
+        // is a one-shot suspend query, only ever re-run when the query TEXT
+        // changed (distinctUntilChanged on _searchQuery alone) -- so deleting
+        // a result from its detail screen and returning to Search left the
+        // stale, now-deleted item showing until the user retyped the query.
+        // Combining with allItems (already observed reactively above) means
+        // any change to the underlying item list re-runs the current search
+        // too, not just a new keystroke.
         @OptIn(FlowPreview::class)
         viewModelScope.launch {
-            _searchQuery
-                .debounce(300)
-                .distinctUntilChanged()
+            combine(
+                _searchQuery.debounce(300).distinctUntilChanged(),
+                allItems
+            ) { query, _ -> query }
                 .collect { query ->
                     _searchResults.value = if (query.length >= 2) {
                         repository.searchItems(query)

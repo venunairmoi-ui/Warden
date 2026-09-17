@@ -12,7 +12,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -92,6 +94,23 @@ const val PENDING_SHARE_MIME_KEY = "pending_share_mime"
 const val PENDING_SHARE_NAME_KEY = "pending_share_name"
 const val PENDING_SHARE_SOURCE_KEY = "pending_share_source"
 
+// Bug fix, 2026-09-17 (QA chaos-persona pass, agent 2): rapid-tapping a
+// button that calls navigate() (the Home FAB especially) pushed multiple
+// instances of the same destination onto the back stack -- every call site
+// here was a bare navController.navigate() with no duplicate-destination
+// guard, so a second tap landing mid-transition queued a second navigate
+// before the first destination's entry became RESUMED. This is the official
+// Compose Navigation pattern for that (see the "Navigating with Compose"
+// guide's "multiple back stack entries" section): a back stack entry only
+// reaches RESUMED once its own transition finishes, so gating on that
+// naturally swallows a tap that lands mid-transition without needing a
+// manual debounce timer or per-destination launchSingleTop bookkeeping.
+private fun NavHostController.navigateSafe(route: String, builder: NavOptionsBuilder.() -> Unit = {}) {
+    if (currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
+        navigate(route, builder)
+    }
+}
+
 /** A share-sheet attachment ShareReceiverActivity has already copied into
  *  app storage, on its way to a fresh AddItem screen. mimeType is the raw
  *  AttachmentMimeType.name() string rather than the enum itself -- keeps
@@ -143,13 +162,13 @@ fun WardenNavHost(
 
     LaunchedEffect(deepLinkTarget) {
         deepLinkTarget?.let { (itemId, _) ->
-            navController.navigate(WardenDestination.ItemDetail.detailRoute(itemId))
+            navController.navigateSafe(WardenDestination.ItemDetail.detailRoute(itemId))
         }
     }
 
     LaunchedEffect(pendingShare) {
         pendingShare?.let { share ->
-            navController.navigate(WardenDestination.AddItem.route)
+            navController.navigateSafe(WardenDestination.AddItem.route)
             // Written onto the entry we just navigated to, not read back
             // here — AddItem's own composable block below picks these up
             // via getStateFlow, same mechanism CAPTURED_URI_KEY uses in the
@@ -219,7 +238,7 @@ fun WardenNavHost(
             OnboardingScreen(
                 onFinished = {
                     scope.launch { settingsRepository.setOnboardingCompleted(true) }
-                    navController.navigate(WardenDestination.Home.route) {
+                    navController.navigateSafe(WardenDestination.Home.route) {
                         popUpTo(WardenDestination.Onboarding.route) { inclusive = true }
                     }
                 }
@@ -228,12 +247,12 @@ fun WardenNavHost(
         composable(WardenDestination.Home.route) {
             OverviewScreen(
                 repository = repository,
-                onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
-                onOpenSettings = { navController.navigate(WardenDestination.Settings.route) },
+                onAddItem = { navController.navigateSafe(WardenDestination.AddItem.route) },
+                onOpenSettings = { navController.navigateSafe(WardenDestination.Settings.route) },
                 pendingSuggestionsCount = preferences.pendingAutoDetectSuggestions.size,
-                onOpenAutoDetectSuggestions = { navController.navigate(WardenDestination.AutoDetectSuggestions.route) },
+                onOpenAutoDetectSuggestions = { navController.navigateSafe(WardenDestination.AutoDetectSuggestions.route) },
                 onOpenProducts = { filter, startInSearch ->
-                    navController.navigate(WardenDestination.Products.route(filter, startInSearch))
+                    navController.navigateSafe(WardenDestination.Products.route(filter, startInSearch))
                 }
             )
         }
@@ -268,8 +287,8 @@ fun WardenNavHost(
             if (isExpandedWidth) {
                 ProductsAdaptiveScreen(
                     repository = repository,
-                    onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
-                    onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
+                    onAddItem = { navController.navigateSafe(WardenDestination.AddItem.route) },
+                    onEditItem = { id -> navController.navigateSafe(WardenDestination.EditItem.editRoute(id)) },
                     onBack = { navController.popBackStack() },
                     initialFilter = filter,
                     startInSearch = startInSearch
@@ -277,9 +296,9 @@ fun WardenNavHost(
             } else {
                 HomeScreen(
                     repository = repository,
-                    onAddItem = { navController.navigate(WardenDestination.AddItem.route) },
-                    onOpenItem = { id -> navController.navigate(WardenDestination.ItemDetail.detailRoute(id)) },
-                    onEditItem = { id -> navController.navigate(WardenDestination.EditItem.editRoute(id)) },
+                    onAddItem = { navController.navigateSafe(WardenDestination.AddItem.route) },
+                    onOpenItem = { id -> navController.navigateSafe(WardenDestination.ItemDetail.detailRoute(id)) },
+                    onEditItem = { id -> navController.navigateSafe(WardenDestination.EditItem.editRoute(id)) },
                     onBack = { navController.popBackStack() },
                     initialFilter = filter,
                     startInSearch = startInSearch
@@ -298,7 +317,7 @@ fun WardenNavHost(
                     // this action already runs inside the nav graph. source =
                     // "AUTO_DETECT" so AddEditItemScreen records the same
                     // provenance either entry point produces.
-                    navController.navigate(WardenDestination.AddItem.route)
+                    navController.navigateSafe(WardenDestination.AddItem.route)
                     navController.currentBackStackEntry?.savedStateHandle?.apply {
                         set(PENDING_SHARE_URI_KEY, suggestion.imageUri)
                         set(PENDING_SHARE_MIME_KEY, "IMAGE")
@@ -313,8 +332,8 @@ fun WardenNavHost(
                 repository = settingsRepository,
                 billingManager = billingManager,
                 onBack = { navController.popBackStack() },
-                onOpenArchivedItems = { navController.navigate(WardenDestination.ArchivedItems.route) },
-                onOpenPrivacy = { navController.navigate(WardenDestination.Privacy.route) }
+                onOpenArchivedItems = { navController.navigateSafe(WardenDestination.ArchivedItems.route) },
+                onOpenPrivacy = { navController.navigateSafe(WardenDestination.Privacy.route) }
             )
         }
         composable(WardenDestination.ArchivedItems.route) {
@@ -349,7 +368,7 @@ fun WardenNavHost(
                 repository = repository,
                 itemId = null,
                 onDone = { navController.popBackStack() },
-                onLaunchCamera = { navController.navigate(WardenDestination.CameraCapture.route) },
+                onLaunchCamera = { navController.navigateSafe(WardenDestination.CameraCapture.route) },
                 capturedUri = capturedUri,
                 onCapturedUriConsumed = { backStackEntry.savedStateHandle[CAPTURED_URI_KEY] = null },
                 pendingShareUri = pendingShareUri,
@@ -377,7 +396,7 @@ fun WardenNavHost(
                 repository = repository,
                 itemId = itemId,
                 onDone = { navController.popBackStack() },
-                onLaunchCamera = { navController.navigate(WardenDestination.CameraCapture.route) },
+                onLaunchCamera = { navController.navigateSafe(WardenDestination.CameraCapture.route) },
                 capturedUri = capturedUri,
                 onCapturedUriConsumed = { backStackEntry.savedStateHandle[CAPTURED_URI_KEY] = null }
             )
@@ -430,7 +449,7 @@ fun WardenNavHost(
             ItemDetailScreen(
                 repository = repository,
                 itemId = itemId,
-                onEdit = { navController.navigate(WardenDestination.EditItem.editRoute(itemId)) },
+                onEdit = { navController.navigateSafe(WardenDestination.EditItem.editRoute(itemId)) },
                 onBack = { navController.popBackStack() },
                 // Same effect as onBack (this screen's only ever pushed on
                 // top of Home), but kept as its own callback so this
