@@ -38,7 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -373,11 +373,13 @@ fun OverviewScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onAddItem,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Add") }
-            )
+            // Feedback, 2026-09-17: "just show the plus sign inside the
+            // circle" -- plain circular FAB instead of the text-label
+            // ExtendedFloatingActionButton, so it doesn't compete visually
+            // with the now-centered, decluttered cards above it.
+            FloatingActionButton(onClick = onAddItem) {
+                Icon(Icons.Default.Add, contentDescription = "Add item")
+            }
         }
     ) { padding ->
         if (grouped.isEmpty) {
@@ -411,43 +413,57 @@ fun OverviewScreen(
                 // Extra bottom space so the last card can scroll clear of
                 // the floating Add button instead of stopping flush
                 // against it.
-                .padding(bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                //
+                // Bumped 96.dp -> 140.dp, 2026-09-17: the dashboard-
+                // declutter pass above (smaller amount font, no per-
+                // category breakdown line, centered content, tightened
+                // 8.dp gaps) shrank the real content enough that its total
+                // height plus the old 96.dp landed BELOW the viewport
+                // height on a real device -- meaning this Column had
+                // nothing left to scroll at all, so the Monthly recurring
+                // costs card rendered at its natural (short) position with
+                // the FAB statically parked on top of its corner, with no
+                // way to scroll it clear. 140.dp reliably pushes total
+                // content past viewport height so scrolling stays possible
+                // and the real last card can always be swiped fully clear
+                // of the FAB -- confirmed live on-device.
+                .padding(bottom = 140.dp),
+            // Feedback, 2026-09-17: "the gaps between cards are not even --
+            // move the last two cards up to match the difference between
+            // the top three cards" -- the three OverviewStatCards used to
+            // sit in their own nested Column with spacedBy(8.dp) while
+            // everything else on this screen (header-to-stats, stats-to-
+            // money-cards, and between the two money cards themselves) used
+            // this outer Column's spacedBy(16.dp), so the stat-card trio
+            // read visibly tighter than the rest. Unified to 8.dp
+            // everywhere and the now-redundant nested Column removed (its
+            // only purpose was that different spacing) -- every gap on this
+            // screen is the same size now. This also shrinks the total
+            // content height, helping the next fix.
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OverviewTotalHeader(
                 itemCount = grouped.totalCount,
                 onClick = { onOpenProducts(null, false) }
             )
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OverviewStatCard(
-                    label = "Active",
-                    count = activeCount,
-                    tint = ItemUrgency.COMFORTABLE.color(),
-                    onClick = { onOpenProducts(HomeViewModel.QuickFilter.ACTIVE, false) }
-                )
-                OverviewStatCard(
-                    label = "Due soon",
-                    count = dueSoonCount,
-                    tint = ItemUrgency.SOON.color(),
-                    onClick = { onOpenProducts(HomeViewModel.QuickFilter.DUE_SOON, false) }
-                )
-                OverviewStatCard(
-                    label = "Expired",
-                    count = expiredCount,
-                    tint = ItemUrgency.OVERDUE.color(),
-                    onClick = { onOpenProducts(HomeViewModel.QuickFilter.EXPIRED, false) }
-                )
-            }
-            // Feedback, 2026-09-17: "the last card feels cluttered... At
-            // Risk can be a card by itself and Monthly recurring can be
-            // another card" -- two independent, full-width stacked cards
-            // (MoneyCard) instead of the old single card split by a
-            // vertical divider (MoneySplitCard/MoneySplitHalf). The parent
-            // Column's own spacedBy(16.dp) already gives these the same
-            // rhythm as every other card on this screen.
+            OverviewStatCard(
+                label = "Active",
+                count = activeCount,
+                tint = ItemUrgency.COMFORTABLE.color(),
+                onClick = { onOpenProducts(HomeViewModel.QuickFilter.ACTIVE, false) }
+            )
+            OverviewStatCard(
+                label = "Due soon",
+                count = dueSoonCount,
+                tint = ItemUrgency.SOON.color(),
+                onClick = { onOpenProducts(HomeViewModel.QuickFilter.DUE_SOON, false) }
+            )
+            OverviewStatCard(
+                label = "Expired",
+                count = expiredCount,
+                tint = ItemUrgency.OVERDUE.color(),
+                onClick = { onOpenProducts(HomeViewModel.QuickFilter.EXPIRED, false) }
+            )
             MoneyCard(
                 icon = Icons.Filled.TrendingDown,
                 label = "At risk this month",
@@ -460,7 +476,14 @@ fun OverviewScreen(
                 icon = Icons.Filled.Autorenew,
                 label = "Monthly recurring costs",
                 value = "${summary.totalRecurringMonthly.toCurrencyString()}/mo",
-                subtitle = recurringBreakdownText(summary),
+                // Feedback, 2026-09-17: "for the last card keep only the
+                // label and the amount, remove the Insurance/Subscription
+                // labels below" -- the per-category breakdown
+                // (recurringBreakdownText) is no longer shown here at all;
+                // that detail is still reachable by tapping through to the
+                // filtered list, which now shows each item's own cost on
+                // its own card (see ProductCard's recurring-cost line).
+                subtitle = null,
                 tint = MaterialTheme.colorScheme.primary,
                 onClick = { onOpenProducts(HomeViewModel.QuickFilter.SUBSCRIPTIONS, false) }
             )
@@ -582,13 +605,22 @@ private fun OverviewStatCard(
  * same feedback ("smaller font size for the amounts") -- each card now has
  * a full line to itself rather than competing with a sibling half for
  * width, so the amount no longer needs to be as large to read clearly.
+ *
+ * Feedback, 2026-09-17 (follow-up): "centre the contents. For the last
+ * card keep only the label and the amount, remove the Insurance/
+ * Subscription labels below" -- [subtitle] is now nullable (the Monthly
+ * recurring costs call site drops the per-category breakdown entirely,
+ * At risk this month keeps its "N items expiring" line), and every line
+ * is centered (icon+label row, value, subtitle) to match
+ * OverviewTotalHeader/OverviewStatCard's own centered convention above,
+ * rather than this card alone being left-aligned.
  */
 @Composable
 private fun MoneyCard(
     icon: ImageVector,
     label: String,
     value: String,
-    subtitle: String,
+    subtitle: String?,
     tint: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -602,7 +634,12 @@ private fun MoneyCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.large
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = tint)
                 Spacer(Modifier.width(6.dp))
@@ -618,76 +655,23 @@ private fun MoneyCard(
                 fontFamily = MaterialTheme.typography.titleLarge.fontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = subtitleMaxLines,
-                overflow = TextOverflow.Ellipsis
-            )
+            subtitle?.let {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = subtitleMaxLines,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
-
-/**
- * Feedback, 2026-09-01: "the monthly subscription card also includes AMC,
- * this will confuse users... show total value for each item separately."
- * Root cause: Item.isRecurringPayment is deliberately category-agnostic
- * (see its own doc comment) -- a billed AMC contract or Insurance premium
- * was folding straight into a card plainly labelled "Monthly subscriptions"
- * with no indication anything else was inside it. Fix keeps the single
- * headline total (still a genuinely useful "how much recurring cost am I
- * carrying this month" figure) but relabels the card "Recurring costs" and
- * replaces the old bare item-count subtitle with this per-category
- * breakdown, so what the number is MADE OF is visible in the same glance
- * instead of requiring a tap-through to the filtered list to discover it.
- * Sorted by amount descending -- the biggest contributor to the total
- * reads first, which is usually what a user checking this card wants to
- * know ("what's actually costing me money here").
- *
- * Bug fix, 2026-09-16, found via real on-device QA testing: with every
- * category showing (up to 5-6 possible: Insurance/AMC/Subscription/
- * Membership/Other, occasionally Warranty), the joined string could run
- * to ~90+ characters -- e.g. "Insurance $1,183.33/mo · Subscription
- * $1,057.25/mo · Membership $1,000.00/mo · AMC $491.67/mo" -- which
- * silently lost whole categories to MoneySplitHalf's line-count-bounded
- * ellipsis (confirmed via UI dump: the full string existed in the
- * accessibility tree, but the rendered screenshot showed only "...·
- * S..."). Raising the line budget to fit it was tried and reverted (see
- * the call site's own comment) since this screen's layout is a plain,
- * non-scrolling Column by design -- a taller card has nowhere to grow
- * except into the floating Add button. Bounding the DATA instead: at
- * most the top 2 categories (already sorted by amount, so these are the
- * two biggest contributors -- the ones this card's own doc comment above
- * says matter most), plus a "+N more" suffix that stays short and fully
- * legible regardless of how many categories exist, rather than an
- * unpredictable mid-word ellipsis cutoff.
- */
-@Composable
-private fun recurringBreakdownText(summary: HomeSummary): String {
-    if (summary.recurringByCategory.isEmpty()) return "No recurring costs yet"
-    // Built as a plain List<String> via map() first, then joined with a
-    // separator-only (no transform lambda) joinToString() -- NOT collapsed
-    // into a single .joinToString(" · ") { ... } call. joinToString's
-    // transform parameter is a *nullable* function type, which Kotlin
-    // can't actually inline even though joinToString itself is `inline`;
-    // a Composable call (toCurrencyString()) inside that un-inlined lambda
-    // fails to compile ("@Composable invocations can only happen from the
-    // context of a @Composable function"). map()'s transform parameter is
-    // non-nullable and genuinely inlined, so the Composable call is fine
-    // there.
-    val sorted = summary.recurringByCategory.entries.sortedByDescending { it.value }
-    val shown = sorted.take(MAX_RECURRING_CATEGORIES_SHOWN)
-        .map { (category, amount) -> "${category.displayName} ${amount.toCurrencyString()}/mo" }
-    val remaining = sorted.size - shown.size
-    val breakdown = shown.joinToString(" · ")
-    return if (remaining > 0) "$breakdown +$remaining more" else breakdown
-}
-
-private const val MAX_RECURRING_CATEGORIES_SHOWN = 2
 
 // ── Empty state ─────────────────────────────────────────────────────
 // Duplicated from HomeScreen.kt's own EmptyState (top-level `private` is

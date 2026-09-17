@@ -857,6 +857,51 @@ android {
         versionCode = 61
         versionName = "0.16.6-dashboard-declutter"
 
+        // 2026-09-17 (follow-up to the above dashboard pass): "centre the
+        // contents. For the last card keep only the label and the amount --
+        // remove the Insurance/Subscription labels below. Also for the add
+        // button just show the plus sign inside the circle." Three changes:
+        // (1) MoneyCard's Column now centers every line (icon+label, value,
+        // subtitle) instead of left-aligning, matching OverviewTotalHeader/
+        // OverviewStatCard's own centered convention. (2) MoneyCard's
+        // subtitle param is now nullable; the Monthly recurring costs call
+        // site passes null, dropping the per-category breakdown
+        // (recurringBreakdownText) entirely -- that function and its
+        // MAX_RECURRING_CATEGORIES_SHOWN constant are now dead code and
+        // removed. At risk this month keeps its "N items expiring" line,
+        // not asked to change. (3) OverviewScreen's floatingActionButton is
+        // a plain circular FloatingActionButton (icon only, real
+        // contentDescription for accessibility now that there's no visible
+        // label) instead of ExtendedFloatingActionButton's icon+"Add" text.
+        // Verified live on-device.
+        versionCode = 62
+        versionName = "0.16.7-dashboard-centering"
+
+        // 2026-09-17 (follow-up): "the gaps between cards are not even --
+        // move the last two cards up to match the difference between the
+        // top three cards. Move all the cards up so the Add button doesn't
+        // overlap the cards." Two issues, one root layout fix each:
+        // (1) The three OverviewStatCards sat in their own nested Column
+        // with spacedBy(8.dp) while the outer Column (governing header-to-
+        // stats, stats-to-money-cards, and between the two money cards)
+        // used spacedBy(16.dp) -- so the stat trio read visibly tighter
+        // than everything else. Unified to 8.dp everywhere and removed the
+        // now-redundant nested Column.
+        // (2) That same dashboard-declutter pass (smaller amount font, no
+        // breakdown line, centered content) had already shrunk total
+        // content enough that, combined with the old bottom=96.dp trailing
+        // space, the whole Column's content fit within the viewport with
+        // nothing left to scroll -- so the Monthly recurring costs card
+        // rendered at its natural (short) position with the FAB statically
+        // parked on its corner, un-scrollable-away. Bumped the trailing
+        // padding to 140.dp, which reliably pushes total content past
+        // viewport height so a swipe can always clear the real last card
+        // of the FAB. Confirmed live on-device: even gaps throughout, and
+        // scrolling now reveals the recurring-costs card fully clear of
+        // the Add button with room to spare.
+        versionCode = 63
+        versionName = "0.16.8-dashboard-spacing-fix"
+
         vectorDrawables { useSupportLibrary = true }
     }
 
